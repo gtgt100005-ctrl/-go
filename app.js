@@ -1,12 +1,65 @@
+// استيراد الدوال اللازمة من فايربيس (نسخة الـ Compat المتوافقة مع ملفات الويب العادية)
+// تأكد من إضافة سكريبتات فايربيس في ملف index.html قبل هذا الملف
+
+const firebaseConfig = {
+  apiKey: "AIzaSyD9HJhxKpFGdJ3tgXj-2k_gVTVJtI0ltlI",
+  authDomain: "goij-add78.firebaseapp.com",
+  projectId: "goij-add78",
+  storageBucket: "goij-add78.firebasestorage.app",
+  messagingSenderId: "181333877345",
+  appId: "1:181333877345:web:5731cbc0f9da64ace40020",
+  measurementId: "G-WSDM2XFGY1"
+};
+
+// تهيئة Firebase
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// مرجع الوثيقة في قاعدة البيانات (نحفظ بيانات المستخدم في وثيقة موحدة لتسهيل المزامنة)
+const docRef = db.collection("challenges").unauthorized ? null : db.collection("userChallenge").doc("myChallengeData");
+
 var $=function(i){return document.getElementById(i)};
-var KEY="c90_v1",EM=["🕌","📖","📚","💪","🎓","🚫","💧","😴","🥗","🧠","✍️","🏃","🤲","⏰","🌱","🎯"];
+var EM=["🕌","📖","📚","💪","🎓","🚫","💧","😴","🥗","🧠","✍️","🏃","🤲","⏰","🌱","🎯"];
 var S={start:null,tasks:[],done:{},stories:{},ba:[]};
+
 function dkey(d){d=d||new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
-function load(){try{var r=localStorage.getItem(KEY);if(r)S=JSON.parse(r)}catch(e){}
- if(!S.start)S.start=dkey();
- if(!S.tasks||!S.tasks.length)S.tasks=[["الصلاة","🕌"],["القرآن","📖"],["الدراسة","📚"],["الرياضة","💪"],["منصة نهل","🎓"],["ترك العادات السرية","🚫"]].map(function(t,i){return{id:"d"+i,n:t[0],e:t[1]}});
- S.done=S.done||{};S.stories=S.stories||{};S.ba=S.ba||[]}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S));return true}catch(e){toast("تعذر الحفظ: المساحة ممتلئة");return false}}
+
+// جلب البيانات من فايربيس Firestore
+function load(){
+  docRef.get().then(function(doc) {
+      if (doc.exists) {
+          S = doc.data();
+          if(!S.start) S.start = dkey();
+          if(!S.tasks || !S.tasks.length) S.tasks = [["الصلاة","🕌"],["القرآن","📖"],["الدراسة","📚"],["الرياضة","💪"],["منصة نهل","🎓"],["ترك العادات السرية","🚫"]].map(function(t,i){return{id:"d"+i,n:t[0],e:t[1]}});
+          S.done = S.done || {}; S.stories = S.stories || {}; S.ba = S.ba || [];
+          render();
+      } else {
+          // إذا لم تكن البيانات موجودة مسبقاً، ننشئ القيم الافتراضية ونحفظها
+          S.start = dkey();
+          S.tasks = [["الصلاة","🕌"],["القرآن","📖"],["الدراسة","📚"],["الرياضة","💪"],["منصة نهل","🎓"],["ترك العادات السرية","🚫"]].map(function(t,i){return{id:"d"+i,n:t[0],e:t[1]}});
+          S.done = {}; S.stories = {}; S.ba = [];
+          save();
+          render();
+      }
+  }).catch(function(error) {
+      console.log("خطأ في جلب البيانات:", error);
+      // كاحتياط لو حدث انقطاع في الاتصال، نعمل بالبيانات الافتراضية
+      if(!S.start) S.start = dkey();
+      render();
+  });
+}
+
+// حفظ البيانات في فايربيس Firestore
+function save(){
+  docRef.set(S).then(function() {
+      // تم الحفظ بنجاح سحابياً
+  }).catch(function(error) {
+      console.error("خطأ في الحفظ:", error);
+      toast("تعذر الحفظ السحابي");
+  });
+  return true;
+}
+
 function toast(m){var t=$("toast");t.textContent=m;t.style.display="block";setTimeout(function(){t.style.display="none"},2200)}
 function esc(s){return String(s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 function today(){var a=new Date(S.start+"T00:00:00"),b=new Date(dkey()+"T00:00:00");var n=Math.round((b-a)/864e5)+1;return Math.max(1,Math.min(90,n))}
@@ -69,4 +122,6 @@ $("ba").onclick=function(ev){var i=ev.target.getAttribute("data-rm");if(i!==null
 
 function tab(a){$("home").classList.toggle("hide",a!==1);$("archive").classList.toggle("hide",a!==2);$("n1").className=a===1?"a":"";$("n2").className=a===2?"a":""}
 $("n1").onclick=function(){tab(1)};$("n2").onclick=function(){tab(2)};
-load();save();render();
+
+// بدء تشغيل التطبيق وجلب البيانات من فايربيس
+load();
