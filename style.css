@@ -81,6 +81,7 @@ h1 {
   overflow-x: auto;
   padding: 6px 4px 16px;
   margin-bottom: 10px;
+  align-items: center;
 }
 
 .st {
@@ -117,6 +118,13 @@ h1 {
 .st.today i {
   border-style: dashed;
   border-color: var(--ok);
+}
+
+.st.add-story i {
+  border-style: dotted;
+  border-color: var(--mu);
+  font-size: 28px;
+  color: var(--ac);
 }
 
 /* العناوين والأزرار */
@@ -174,7 +182,7 @@ h1 {
   transition: width 0.3s;
 }
 
-/* قائمة التحديات بنظام النجاح والفشل */
+/* قائمة التحديات */
 .grid {
   display: flex;
   flex-direction: column;
@@ -219,7 +227,6 @@ h1 {
   word-break: break-word;
 }
 
-/* أزرار النجاح والفشل والتعديل */
 .tk-actions {
   display: flex;
   align-items: center;
@@ -351,7 +358,7 @@ h1 {
   font-size: 18px;
 }
 
-input[type=text], textarea {
+input[type=text], textarea, select {
   width: 100%;
   background: var(--bg);
   border: 1px solid var(--bd);
@@ -361,6 +368,7 @@ input[type=text], textarea {
   font: inherit;
   font-size: 15px;
   outline: none;
+  margin-top: 4px;
 }
 
 textarea {
@@ -427,6 +435,7 @@ textarea {
   justify-content: center;
   overflow: hidden;
   padding: 10px;
+  position: relative;
 }
 
 .sv .mid img {
@@ -436,8 +445,23 @@ textarea {
   object-fit: contain;
 }
 
+.sv .note-box {
+  position: absolute;
+  bottom: 20px;
+  background: rgba(0,0,0,0.7);
+  padding: 10px 16px;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 14px;
+  max-width: 80%;
+  text-align: center;
+}
+
 .sv .bot {
   padding: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .sv .x {
