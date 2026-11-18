@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>تحدي الـ 90 يوم</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+<section id="home">
+  <h1>🔥 تحدي الـ 90 يوم</h1>
+  <div class="ring" id="ring"><div><span><b id="dn">1</b>من 90</span></div></div>
+  <div class="stories" id="stories"></div>
+  <div class="hd"><h2>قائمة المهام اليومية</h2><button class="btn" id="addBtn">+ إضافة تحدي</button></div>
+  <div class="pct" id="pct"></div>
+  <div class="bar"><div id="bar"></div></div>
+  <div class="grid" id="tasks"></div>
+</section>
+<section id="archive" class="hide">
+  <h1>🗂️ الأرشيف</h1>
+  <div class="hd"><h2>الستوريات حسب الأسبوع</h2></div>
+  <div class="wk" id="wk"></div>
+  <div class="days" id="wdays"></div>
+  <div class="hd" style="margin-top:22px"><h2>قبل وبعد</h2><label class="btn" for="fiBa">+ إضافة صورة</label></div>
+  <div id="cmp"></div>
+  <div class="ba" id="ba"></div>
+</section>
+</div>
+
+<div class="nav"><button id="n1" class="a">🏠 الرئيسية</button><button id="n2">🗂️ الأرشيف</button></div>
+
+<div class="ov" id="tm"><div class="md">
+  <h3 id="tmT">تحدي جديد</h3>
+  <input type="text" id="tmN" placeholder="اسم التحدي أو العادة" maxlength="40">
+  <div class="emo" id="emo"></div>
+  <div class="row"><button class="btn" id="tmS">حفظ</button><button class="btn g" id="tmC">إلغاء</button></div>
+</div></div>
+
+<div class="sv" id="sv">
+  <div class="pb"><div></div></div>
+  <div class="top"><b id="svT"></b><button class="x" id="svX">✕</button></div>
+  <div class="mid" id="svM"></div>
+  <div class="bot">
+    <textarea id="svN" placeholder="اكتب وصف اليوم وملاحظاتك..."></textarea>
+    <div class="row"><div class="row" id="svU" style="margin:0;flex:2"><label class="btn g" for="fiCam">📷 كاميرا</label><label class="btn g" for="fiGal">🖼️ المعرض</label></div><button class="btn" id="svS">حفظ</button></div>
+  </div>
+</div>
+<input type="file" id="fiCam" accept="image/*" capture="environment" class="fin">
+<input type="file" id="fiGal" accept="image/*" class="fin">
+<input type="file" id="fiBa" accept="image/*" class="fin">
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
