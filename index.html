@@ -1,61 +1,121 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>تحدي الـ 90 يوم</title>
-<link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>تحدي الـ 90 يوماً</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 </head>
 <body>
-<div class="wrap">
-<section id="home">
-  <h1>🔥 تحدي الـ 90 يوم</h1>
-  <div class="ring" id="ring"><div><span><b id="dn">1</b>من 90</span></div></div>
-  <div class="stories" id="stories"></div>
-  <div class="hd"><h2>قائمة المهام اليومية</h2><button class="btn" id="addBtn">+ إضافة تحدي</button></div>
-  <div class="pct" id="pct"></div>
-  <div class="bar"><div id="bar"></div></div>
-  <div class="grid" id="tasks"></div>
-</section>
-<section id="archive" class="hide">
-  <h1>🗂️ الأرشيف</h1>
-  <div class="hd"><h2>الستوريات حسب الأسبوع</h2></div>
-  <div class="wk" id="wk"></div>
-  <div class="days" id="wdays"></div>
-  <div class="hd" style="margin-top:22px"><h2>قبل وبعد</h2><label class="btn" for="fiBa">+ إضافة صورة</label></div>
-  <div id="cmp"></div>
-  <div class="ba" id="ba"></div>
-</section>
-</div>
 
-<div class="nav"><button id="n1" class="a">🏠 الرئيسية</button><button id="n2">🗂️ الأرشيف</button></div>
+  <div class="wrap">
+    <!-- الشاشة الرئيسية -->
+    <div id="home">
+      <h1>🔥 تحدي الـ 90 يوم</h1>
 
-<div class="ov" id="tm"><div class="md">
-  <h3 id="tmT">تحدي جديد</h3>
-  <input type="text" id="tmN" placeholder="اسم التحدي أو العادة" maxlength="40">
-  <div class="emo" id="emo"></div>
-  <div class="row"><button class="btn" id="tmS">حفظ</button><button class="btn g" id="tmC">إلغاء</button></div>
-</div></div>
+      <!-- حلقة التقدم الدائرية -->
+      <div class="ring" id="ring">
+        <div>
+          <b id="dn">1</b>
+          <span>من 90</span>
+        </div>
+      </div>
 
-<div class="sv" id="sv">
-  <div class="pb"><div></div></div>
-  <div class="top"><b id="svT"></b><button class="x" id="svX">✕</button></div>
-  <div class="mid" id="svM"></div>
-  <div class="bot">
-    <textarea id="svN" placeholder="اكتب وصف اليوم وملاحظاتك..."></textarea>
-    <div class="row"><div class="row" id="svU" style="margin:0;flex:2"><label class="btn g" for="fiCam">📷 كاميرا</label><label class="btn g" for="fiGal">🖼️ المعرض</label></div><button class="btn" id="svS">حفظ</button></div>
+      <!-- شريط الستوريات اليومية -->
+      <div class="stories" id="stories"></div>
+
+      <!-- زر إضافة تحدي -->
+      <div class="hd">
+        <h2>قائمة المهام اليومية</h2>
+        <button class="btn" id="addBtn">+ إضافة تحدي</button>
+      </div>
+
+      <div class="pct" id="pct">إنجاز اليوم: 0 من 0 (0%)</div>
+      <div class="bar"><div id="bar"></div></div>
+
+      <!-- شبكة التحديات والمهام -->
+      <div class="grid" id="tasks"></div>
+    </div>
+
+    <!-- شاشة الأرشيف -->
+    <div id="archive" class="hide">
+      <h1>الأرشيف والتقارير</h1>
+      <div class="wk" id="wk"></div>
+      <div class="days" id="wdays"></div>
+
+      <div class="hd" style="margin-top:24px">
+        <h2>صور التطور (Before & After)</h2>
+        <label class="btn" for="fiBa">+ أضف صورة</label>
+        <input type="file" id="fiBa" accept="image/*" class="fin">
+      </div>
+      <div class="ba" id="ba"></div>
+    </div>
   </div>
-</div>
-<input type="file" id="fiCam" accept="image/*" capture="environment" class="fin">
-<input type="file" id="fiGal" accept="image/*" class="fin">
-<input type="file" id="fiBa" accept="image/*" class="fin">
-<div class="toast" id="toast"></div>
 
-<!-- مكتبات الاتصال بقاعدة بيانات Firebase Firestore -->
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <!-- شريط التصفح السفلي -->
+  <nav class="nav">
+    <button id="n1" class="a">🏠 الرئيسية</button>
+    <button id="n2">📁 الأرشيف</button>
+  </nav>
 
-<!-- ملف التطبيق الرئيسي -->
-<script src="app.js"></script>
+  <!-- نافذة إضافة / تعديل التحدي -->
+  <div class="ov" id="tm">
+    <div class="md">
+      <h3 id="tmT">تحدي جديد</h3>
+      <input type="text" id="tmN" placeholder="اسم التحدي...">
+      
+      <div style="margin-top:12px; font-size:13px; color:var(--mu);">تكرار التحدي أسبوعياً:</div>
+      <select id="taskSchedule">
+        <option value="all">كل أيام الأسبوع (يومياً)</option>
+        <option value="sat_thu">السبت إلى الخميس (راحة الجمعة)</option>
+        <option value="fri">يوم الجمعة فقط</option>
+        <option value="weekend">عطلة نهاية الأسبوع (الجمعة والسبت)</option>
+      </select>
+
+      <div class="emo" id="emo"></div>
+      <div class="row">
+        <button class="btn g" id="tmC">إلغاء</button>
+        <button class="btn" id="tmS">حفظ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- عارض الستوري -->
+  <div class="sv" id="sv">
+    <div class="top">
+      <span id="svT">ستوري اليوم</span>
+      <button class="x" id="svX">&times;</button>
+    </div>
+    <div class="pb"><div></div></div>
+    <div class="mid" id="svM">
+      <div class="ph">لا توجد صورة مرفقة</div>
+    </div>
+    
+    <!-- منطقة إدخال الستوري الجديد (تظهر عند الإضافة وتختفي عند العرض) -->
+    <div class="bot" id="storyInputArea">
+      <div style="display:flex; gap:8px; width:100%;">
+        <label class="btn g" style="flex:1; text-align:center;" for="fiCam">📷 كاميرا</label>
+        <input type="file" id="fiCam" accept="image/*" capture="environment" class="fin">
+        
+        <label class="btn g" style="flex:1; text-align:center;" for="fiGal">🖼️ معرض</label>
+        <input type="file" id="fiGal" accept="image/*" class="fin">
+      </div>
+      <textarea id="svN" placeholder="اكتب ملاحظة أو إنجاز اليوم..."></textarea>
+      <button class="btn" id="svS" style="width:100%; margin-top:8px;">حفظ الستوري</button>
+    </div>
+
+    <!-- زر حذف الستوري (يظهر فقط عند عرض ستوري قديم) -->
+    <div class="bot" id="storyDeleteBtn" style="display:none;">
+      <button class="btn" style="background:var(--no); width:100%;" onclick="deleteCurrentStory()">🗑️ حذف هذا الستوري</button>
+    </div>
+  </div>
+
+  <!-- تنبيهات Toast -->
+  <div class="toast" id="toast"></div>
+
+  <script src="app.js"></script>
 </body>
 </html>
