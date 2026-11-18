@@ -31,7 +31,8 @@ const EMOJIS = ["🔥","🕌","📖","📚","💪","🎓","🚫","💧","🏃","
 let S = {
   start: null,
   tasks: [],
-  days: {},
+  dayStatus: {}, // يحفظ حالة كل تحدي لكل يوم: { dayNum: { taskId: 'success' أو 'fail' } }
+  dayTasks: {},  // يحفظ نسخة التحديات الخاصة بكل يوم لضمان ثبات الماضي
   stories: {},
   ba: []
 };
@@ -79,7 +80,8 @@ async function initApp() {
       const data = snap.data();
       S.start = data.start || todayStr();
       S.tasks = (data.tasks && data.tasks.length > 0) ? data.tasks : [...DEFAULT_TASKS];
-      S.days = data.days || {};
+      S.dayStatus = data.dayStatus || {};
+      S.dayTasks = data.dayTasks || {};
       S.stories = data.stories || {};
       S.ba = data.ba || [];
       if (!data.tasks || data.tasks.length === 0) await save();
@@ -131,7 +133,15 @@ function render() {
     ringEl.style.setProperty('--p', pctVal);
   }
 
-  // رسم شريط الستوريات اليومية الأفقية
+  // تثبيت نسخة التحديات لهذا اليوم إن لم تكن موجودة
+  if (!S.dayTasks[dn]) {
+    S.dayTasks[dn] = JSON.parse(JSON.stringify(S.tasks));
+  }
+  if (!S.dayStatus[dn]) {
+    S.dayStatus[dn] = {};
+  }
+
+  // رسم الستوريات الأفقية
   const storiesEl = document.getElementById("stories");
   storiesEl.innerHTML = "";
   for (let i = 1; i <= dn; i++) {
@@ -144,42 +154,49 @@ function render() {
     storiesEl.appendChild(btnSt);
   }
 
-  // رسم بطاقات المهام والتحديات
-  const doneList = S.days[dn] || [];
+  // رسم بطاقات المهام بنظام النجاح والفشل
+  const activeTasks = S.dayTasks[dn] || S.tasks;
+  const statusMap = S.dayStatus[dn] || {};
   const tasksEl = document.getElementById("tasks");
   tasksEl.innerHTML = "";
-  S.tasks.forEach(t => {
-    const isDone = doneList.includes(t.id);
+  
+  activeTasks.forEach(t => {
+    const st = statusMap[t.id]; // 'success' أو 'fail' أو undefined
     const card = document.createElement("div");
-    card.className = "tk" + (isDone ? " on" : "");
+    card.className = "tk" + (st === 'success' ? " success" : st === 'fail' ? " fail" : "");
     card.innerHTML = `
-      <div class="tools">
-        <button onclick="event.stopPropagation(); editTask('${t.id}')">✏️</button>
-        <button onclick="event.stopPropagation(); delTask('${t.id}')">🗑️</button>
+      <div class="tk-info">
+        <span class="e">${t.e}</span>
+        <span class="n">${t.n}</span>
       </div>
-      <div class="ck">${isDone ? "✓" : ""}</div>
-      <div class="e">${t.e}</div>
-      <div class="n">${t.n}</div>
+      <div class="tk-actions">
+        <button class="act-btn success-btn ${st === 'success' ? 'active' : ''}" onclick="setTaskStatus('${t.id}', 'success')">✓ نجاح</button>
+        <button class="act-btn fail-btn ${st === 'fail' ? 'active' : ''}" onclick="setTaskStatus('${t.id}', 'fail')">✕ فشل</button>
+        <button class="tool-ic" onclick="editTask('${t.id}')">✏️</button>
+        <button class="tool-ic" onclick="delTask('${t.id}')">🗑️</button>
+      </div>
     `;
-    card.onclick = () => toggleTask(t.id);
     tasksEl.appendChild(card);
   });
 
-  const total = S.tasks.length;
-  const completed = doneList.filter(id => S.tasks.some(t => t.id === id)).length;
+  const total = activeTasks.length;
+  const completed = Object.values(statusMap).filter(val => val === 'success').length;
   const pct = total ? Math.round((completed / total) * 100) : 0;
-  document.getElementById("pct").textContent = `إنجاز اليوم: ${completed} من ${total} (${pct}%)`;
+  document.getElementById("pct").textContent = `إنجاز اليوم: ${completed} من ${total} نجاح (${pct}%)`;
   document.getElementById("bar").style.width = pct + "%";
 
   renderArchive(dn);
 }
 
-async function toggleTask(id) {
+async function setTaskStatus(id, status) {
   const dn = getDayNum();
-  if (!S.days[dn]) S.days[dn] = [];
-  const idx = S.days[dn].indexOf(id);
-  if (idx > -1) S.days[dn].splice(idx, 1);
-  else S.days[dn].push(id);
+  if (!S.dayStatus[dn]) S.dayStatus[dn] = {};
+  // إذا ضغط نفس الزر مجدداً، يتم إلغاء الحالة
+  if (S.dayStatus[dn][id] === status) {
+    delete S.dayStatus[dn][id];
+  } else {
+    S.dayStatus[dn][id] = status;
+  }
   render();
   await save();
 }
@@ -205,7 +222,7 @@ window.editTask = (id) => {
 };
 
 window.delTask = async (id) => {
-  if (!confirm("هل تريد حذف هذا التحدي؟")) return;
+  if (!confirm("هل تريد حذف هذا التحدي من القائمة المستقبلية؟")) return;
   S.tasks = S.tasks.filter(x => x.id !== id);
   render();
   await save();
@@ -217,11 +234,18 @@ document.getElementById("tmC").onclick = () => document.getElementById("tm").cla
 document.getElementById("tmS").onclick = async () => {
   const name = document.getElementById("tmN").value.trim();
   if (!name) return showToast("اكتب اسم التحدي أولاً");
+  const dn = getDayNum();
   if (editId) {
-    const t = S.tasks.find(x => x.id === editId);
-    if (t) { t.n = name; t.e = selEmoji; }
+    S.tasks.forEach(t => { if (t.id === editId) { t.n = name; t.e = selEmoji; } });
+    if (S.dayTasks[dn]) {
+      S.dayTasks[dn].forEach(t => { if (t.id === editId) { t.n = name; t.e = selEmoji; } });
+    }
   } else {
-    S.tasks.push({ id: "t" + Date.now(), n: name, e: selEmoji });
+    const newTask = { id: "t" + Date.now(), n: name, e: selEmoji };
+    S.tasks.push(newTask);
+    if (S.dayTasks[dn]) {
+      S.dayTasks[dn].push(newTask);
+    }
   }
   document.getElementById("tm").classList.remove("s");
   render();
@@ -279,11 +303,11 @@ function renderArchive(dn) {
   for (let d = startD; d <= endD; d++) {
     const has = !!S.stories[d];
     const item = document.createElement("div");
-    // استخدام تصميم نظيف ومتناسق لأيام الأرشيف لتتوافق مع الـ Grid
-    item.className = "tk" + (has ? " on" : "");
+    item.className = "tk" + (has ? " success" : "");
     item.style.cursor = "pointer";
     item.style.padding = "12px 6px";
     item.style.textAlign = "center";
+    item.style.display = "block";
     item.innerHTML = `
       <div class="e" style="font-size:22px">${has && S.stories[d].img ? '📸' : '📅'}</div>
       <div class="n" style="font-size:13px;margin-top:4px">يوم ${d}</div>
