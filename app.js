@@ -18,29 +18,30 @@ const docRef = db.collection("challenge90").doc("user_main_data");
 
 // 2. التحديات الافتراضية الستة
 const DEFAULT_TASKS = [
-  { id: "d0", n: "الصلاة", e: "🕌" },
-  { id: "d1", n: "القرآن", e: "📖" },
-  { id: "d2", n: "الدراسة", e: "📚" },
-  { id: "d3", n: "الرياضة", e: "💪" },
-  { id: "d4", n: "منصة نهل", e: "🎓" },
-  { id: "d5", n: "ترك العادات السرية", e: "🚫" }
+  { id: "d0", n: "الصلاة", e: "🕌", days: [0,1,2,3,4,5,6] },
+  { id: "d1", n: "القرآن", e: "📖", days: [0,1,2,3,4,5,6] },
+  { id: "d2", n: "الدراسة", e: "📚", days: [0,1,2,3,4,5,6] },
+  { id: "d3", n: "الرياضة", e: "💪", days: [0,1,2,3,4,5,6] },
+  { id: "d4", n: "منصة نهل", e: "🎓", days: [0,1,2,3,4,5,6] },
+  { id: "d5", n: "ترك العادات السرية", e: "🚫", days: [0,1,2,3,4,5,6] }
 ];
 
 const EMOJIS = ["🔥","🕌","📖","📚","💪","🎓","🚫","💧","🏃","🧠","✍️","💤","🥗","💻","🎯","⭐"];
+const DAYS_OF_WEEK = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
 
 let S = {
   start: null,
   tasks: [],
-  dayStatus: {}, // يحفظ حالة كل تحدي لكل يوم: { dayNum: { taskId: 'success' أو 'fail' } }
-  dayTasks: {},  // يحفظ نسخة التحديات الخاصة بكل يوم لضمان ثبات الماضي
-  stories: {},
+  dayStatus: {}, 
+  dayTasks: {},  
+  stories: {}, // الآن يدعم مصفوفة ستوريات لكل يوم: { dayNum: [ {id, img, note} ] }
   ba: []
 };
 
 let editId = null;
 let selEmoji = EMOJIS[0];
 let curStoryDay = 1;
-let tempImg = "";
+let activeStoryIndex = null;
 
 function todayStr() {
   const d = new Date();
@@ -53,6 +54,13 @@ function getDayNum() {
   const t = new Date(todayStr() + "T00:00:00");
   const diff = Math.floor((t - s) / 86400000) + 1;
   return Math.max(1, Math.min(90, diff));
+}
+
+function getDayOfWeek(dayNum) {
+  if (!S.start) return new Date().getDay();
+  const s = new Date(S.start + "T00:00:00");
+  s.setDate(s.getDate() + (dayNum - 1));
+  return s.getDay(); // 0 الأحد إلى 6 السبت
 }
 
 function showToast(msg) {
@@ -79,22 +87,32 @@ async function initApp() {
     if (snap.exists) {
       const data = snap.data();
       S.start = data.start || todayStr();
-      S.tasks = (data.tasks && data.tasks.length > 0) ? data.tasks : [...DEFAULT_TASKS];
+      S.tasks = (data.tasks && data.tasks.length > 0) ? data.tasks : DEFAULT_TASKS.map(t => ({...t}));
+      // توافقية مع النسخ القديمة إذا كانت الستوريات عبارة عن كائن وليست مصفوفة
+      S.stories = {};
+      if (data.stories) {
+        for (let k in data.stories) {
+          if (!Array.isArray(data.stories[k])) {
+            S.stories[k] = [data.stories[k]];
+          } else {
+            S.stories[k] = data.stories[k];
+          }
+        }
+      }
       S.dayStatus = data.dayStatus || {};
       S.dayTasks = data.dayTasks || {};
-      S.stories = data.stories || {};
       S.ba = data.ba || [];
       if (!data.tasks || data.tasks.length === 0) await save();
     } else {
       S.start = todayStr();
-      S.tasks = [...DEFAULT_TASKS];
+      S.tasks = DEFAULT_TASKS.map(t => ({...t}));
       await save();
     }
     showToast("✅ تمت المزامنة بنجاح");
   } catch (e) {
     console.error("خطأ في الاتصال بـ Firestore:", e);
     S.start = todayStr();
-    S.tasks = [...DEFAULT_TASKS];
+    S.tasks = DEFAULT_TASKS.map(t => ({...t}));
     showToast("⚠️ تعذر الاتصال بقاعدة البيانات");
   }
   render();
@@ -133,7 +151,6 @@ function render() {
     ringEl.style.setProperty('--p', pctVal);
   }
 
-  // تثبيت نسخة التحديات لهذا اليوم إن لم تكن موجودة
   if (!S.dayTasks[dn]) {
     S.dayTasks[dn] = JSON.parse(JSON.stringify(S.tasks));
   }
@@ -141,27 +158,37 @@ function render() {
     S.dayStatus[dn] = {};
   }
 
-  // رسم الستوريات الأفقية
+  // رسم الستوريات الأفقية لشريط اليوم الحالي (مع دعم الستوريات المتعددة وزر الإضافة +)
   const storiesEl = document.getElementById("stories");
   storiesEl.innerHTML = "";
-  for (let i = 1; i <= dn; i++) {
-    const hasStory = !!S.stories[i];
-    const isToday = (i === dn);
+  
+  const dayStories = S.stories[dn] || [];
+  dayStories.forEach((st, idx) => {
     const btnSt = document.createElement("button");
-    btnSt.className = "st" + (hasStory ? " has" : "") + (isToday ? " today" : "");
-    btnSt.innerHTML = `<i style="${hasStory && S.stories[i].img ? `background-image:url(${S.stories[i].img})` : ''}">${hasStory && S.stories[i].img ? '' : i}</i>يوم ${i}`;
-    btnSt.onclick = () => openStory(i);
+    btnSt.className = "st has";
+    btnSt.innerHTML = `<i style="background-image:url(${st.img})"></i>ستوري ${idx + 1}`;
+    btnSt.onclick = () => viewExistingStory(dn, idx);
     storiesEl.appendChild(btnSt);
-  }
+  });
 
-  // رسم بطاقات المهام بنظام النجاح والفشل
-  const activeTasks = S.dayTasks[dn] || S.tasks;
+  // زر إضافة ستوري جديد بجانب الستوريات
+  const addStBtn = document.createElement("button");
+  addStBtn.className = "st add-story today";
+  addStBtn.innerHTML = `<i>+</i>إضافة`;
+  addStBtn.onclick = () => openNewStoryModal(dn);
+  storiesEl.appendChild(addStBtn);
+
+  // تصفية مهام اليوم الحالي بناءً على الأيام المجدولة لها
+  const currentDow = getDayOfWeek(dn);
+  const baseTasks = S.dayTasks[dn] || S.tasks;
+  const activeTasks = baseTasks.filter(t => !t.days || t.days.includes(currentDow));
+
   const statusMap = S.dayStatus[dn] || {};
   const tasksEl = document.getElementById("tasks");
   tasksEl.innerHTML = "";
   
   activeTasks.forEach(t => {
-    const st = statusMap[t.id]; // 'success' أو 'fail' أو undefined
+    const st = statusMap[t.id]; 
     const card = document.createElement("div");
     card.className = "tk" + (st === 'success' ? " success" : st === 'fail' ? " fail" : "");
     card.innerHTML = `
@@ -180,7 +207,7 @@ function render() {
   });
 
   const total = activeTasks.length;
-  const completed = Object.values(statusMap).filter(val => val === 'success').length;
+  const completed = Object.keys(statusMap).filter(id => activeTasks.some(t => t.id === id) && statusMap[id] === 'success').length;
   const pct = total ? Math.round((completed / total) * 100) : 0;
   document.getElementById("pct").textContent = `إنجاز اليوم: ${completed} من ${total} نجاح (${pct}%)`;
   document.getElementById("bar").style.width = pct + "%";
@@ -191,7 +218,6 @@ function render() {
 async function setTaskStatus(id, status) {
   const dn = getDayNum();
   if (!S.dayStatus[dn]) S.dayStatus[dn] = {};
-  // إذا ضغط نفس الزر مجدداً، يتم إلغاء الحالة
   if (S.dayStatus[dn][id] === status) {
     delete S.dayStatus[dn][id];
   } else {
@@ -203,9 +229,14 @@ async function setTaskStatus(id, status) {
 
 function openTaskModal(task = null) {
   editId = task ? task.id : null;
-  document.getElementById("tmT").textContent = task ? "تعديل التحدي" : "تحدي جديد";
+  document.getElementById("tmT").textContent = task ? "تعديل التحدي" : "تحدي جديد وسام";
   document.getElementById("tmN").value = task ? task.n : "";
   selEmoji = task ? task.e : EMOJIS[0];
+  
+  // تحديد أيام التكرار
+  const daysArr = task && task.days ? task.days : [0,1,2,3,4,5,6];
+  document.getElementById("taskSchedule").value = daysArr.length === 7 ? "all" : "custom";
+  
   const emoEl = document.getElementById("emo");
   emoEl.innerHTML = EMOJIS.map(e => `<button type="button" class="${e === selEmoji ? "a" : ""}" onclick="selectEmoji('${e}')">${e}</button>`).join("");
   document.getElementById("tm").classList.add("s");
@@ -231,17 +262,25 @@ window.delTask = async (id) => {
 
 document.getElementById("addBtn").onclick = () => openTaskModal();
 document.getElementById("tmC").onclick = () => document.getElementById("tm").classList.remove("s");
+
 document.getElementById("tmS").onclick = async () => {
   const name = document.getElementById("tmN").value.trim();
   if (!name) return showToast("اكتب اسم التحدي أولاً");
+  
+  const sched = document.getElementById("taskSchedule").value;
+  let targetDays = [0,1,2,3,4,5,6];
+  if (sched === "sat_thu") targetDays = [1,2,3,4,5,6]; // السبت إلى الخميس
+  else if (sched === "fri") targetDays = [5]; // الجمعة فقط
+  else if (sched === "weekend") targetDays = [5,6]; // الجمعة والسبت
+
   const dn = getDayNum();
   if (editId) {
-    S.tasks.forEach(t => { if (t.id === editId) { t.n = name; t.e = selEmoji; } });
+    S.tasks.forEach(t => { if (t.id === editId) { t.n = name; t.e = selEmoji; t.days = targetDays; } });
     if (S.dayTasks[dn]) {
-      S.dayTasks[dn].forEach(t => { if (t.id === editId) { t.n = name; t.e = selEmoji; } });
+      S.dayTasks[dn].forEach(t => { if (t.id === editId) { t.n = name; t.e = selEmoji; t.days = targetDays; } });
     }
   } else {
-    const newTask = { id: "t" + Date.now(), n: name, e: selEmoji };
+    const newTask = { id: "t" + Date.now(), n: name, e: selEmoji, days: targetDays };
     S.tasks.push(newTask);
     if (S.dayTasks[dn]) {
       S.dayTasks[dn].push(newTask);
@@ -250,16 +289,37 @@ document.getElementById("tmS").onclick = async () => {
   document.getElementById("tm").classList.remove("s");
   render();
   await save();
-  showToast("تم حفظ التحدي في السحابة ✅");
+  showToast("تم حفظ التحدي بنجاح ✅");
 };
 
-function openStory(day) {
+// دوال إدارة الستوريات (عرض الستوري الحالي بحذف فقط بدون تعديل، وإضافة ستوريات متعددة)
+function viewExistingStory(day, index) {
   curStoryDay = day;
-  const st = S.stories[day] || { img: "", note: "" };
-  tempImg = st.img || "";
-  document.getElementById("svT").textContent = `ستوري اليوم ${day}`;
-  document.getElementById("svN").value = st.note || "";
-  document.getElementById("svM").innerHTML = tempImg ? `<img src="${tempImg}">` : `<div class="ph">لا توجد صورة مرفقة لهذا اليوم</div>`;
+  activeStoryIndex = index;
+  const stList = S.stories[day] || [];
+  const st = stList[index];
+  if (!st) return;
+
+  document.getElementById("svT").textContent = `ستوري يوم ${day} (${index + 1}/${stList.length})`;
+  document.getElementById("svM").innerHTML = `
+    <img src="${st.img}">
+    ${st.note ? `<div class="note-box">${st.note}</div>` : ''}
+  `;
+  // إخفاء حقول الإدخال وإظهار زر الحذف فقط
+  document.getElementById("storyInputArea").style.display = "none";
+  document.getElementById("storyDeleteBtn").style.display = "block";
+  document.getElementById("sv").classList.add("s");
+}
+
+function openNewStoryModal(day) {
+  curStoryDay = day;
+  activeStoryIndex = null;
+  document.getElementById("svT").textContent = `إضافة ستوري ليوم ${day}`;
+  document.getElementById("svM").innerHTML = `<div class="ph">اختر صورة الكاميرا أو المعرض لإضافة ستوري جديد</div>`;
+  document.getElementById("svN").value = "";
+  // إظهار حقول الإدخال وإخفاء زر الحذف المفرد
+  document.getElementById("storyInputArea").style.display = "block";
+  document.getElementById("storyDeleteBtn").style.display = "none";
   document.getElementById("sv").classList.add("s");
 }
 
@@ -276,12 +336,33 @@ document.getElementById("fiGal").onchange = handleStoryFile;
 
 document.getElementById("svS").onclick = async () => {
   const note = document.getElementById("svN").value.trim();
-  if (!tempImg && !note) return showToast("أضف صورة أو ملاحظة للحفظ");
-  S.stories[curStoryDay] = { img: tempImg, note, date: todayStr() };
+  if (!tempImg) return showToast("يرجى إرفاق صورة للستوري أولاً");
+  
+  if (!S.stories[curStoryDay]) S.stories[curStoryDay] = [];
+  S.stories[curStoryDay].push({ id: "st_" + Date.now(), img: tempImg, note, date: todayStr() });
+  
+  tempImg = "";
   document.getElementById("sv").classList.remove("s");
   render();
   await save();
-  showToast("تم حفظ الستوري سحابياً 📸");
+  showToast("تمت إضافة الستوري بنجاح 📸");
+};
+
+// زر حذف الستوري الحالي من النافذة المنبثقة
+window.deleteCurrentStory = async () => {
+  if (activeStoryIndex === null || activeStoryIndex === undefined) return;
+  if (!confirm("هل تريد حذف هذا الستوري نهائياً؟")) return;
+
+  if (S.stories[curStoryDay]) {
+    S.stories[curStoryDay].splice(activeStoryIndex, 1);
+    if (S.stories[curStoryDay].length === 0) {
+      delete S.stories[curStoryDay];
+    }
+  }
+  document.getElementById("sv").classList.remove("s");
+  render();
+  await save();
+  showToast("تم حذف الستوري");
 };
 
 let selWeek = 1;
@@ -301,19 +382,27 @@ function renderArchive(dn) {
   const startD = (selWeek - 1) * 7 + 1;
   const endD = Math.min(90, selWeek * 7);
   for (let d = startD; d <= endD; d++) {
-    const has = !!S.stories[d];
+    const hasStories = S.stories[d] && S.stories[d].length > 0;
+    const count = hasStories ? S.stories[d].length : 0;
     const item = document.createElement("div");
-    item.className = "tk" + (has ? " success" : "");
+    item.className = "tk" + (hasStories ? " success" : "");
     item.style.cursor = "pointer";
     item.style.padding = "12px 6px";
     item.style.textAlign = "center";
     item.style.display = "block";
     item.innerHTML = `
-      <div class="e" style="font-size:22px">${has && S.stories[d].img ? '📸' : '📅'}</div>
+      <div class="e" style="font-size:22px">${hasStories ? '📸' : '📅'}</div>
       <div class="n" style="font-size:13px;margin-top:4px">يوم ${d}</div>
-      <div style="font-size:10px;color:var(--mu);margin-top:2px">${has ? "مكتمل" : "فارغ"}</div>
+      <div style="font-size:10px;color:var(--mu);margin-top:2px">${hasStories ? `${count} ستوري` : "فارغ"}</div>
     `;
-    item.onclick = () => openStory(d);
+    // عند الضغط على اليوم في الأرشيف، إذا كان لديه ستوريات يفتح الأول، وإلا يفتح نافذة إضافة ستوري
+    item.onclick = () => {
+      if (hasStories) {
+        viewExistingStory(d, 0);
+      } else {
+        openNewStoryModal(d);
+      }
+    };
     wdaysEl.appendChild(item);
   }
 
