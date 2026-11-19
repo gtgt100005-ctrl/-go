@@ -12,16 +12,17 @@ let db = null;
 let docRef = null;
 
 try {
-  if (typeof firebase !== "undefined" && firebase.apps && !firebase.apps.length) {
-    firebase.initializeApp(firebaseConfig);
+  if (typeof firebase !== "undefined") {
+    if (!firebase.apps || !firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    if (firebase.firestore) {
+      db = firebase.firestore();
+      docRef = db.collection("challenge90").doc("user_main_data");
+    }
   }
-  if (typeof firebase !== "undefined" && firebase.firestore) {
-    db = firebase.firestore();
-    db.enablePersistence().catch(() => {});
-    docRef = db.collection("challenge90").doc("user_main_data");
-  }
-} catch (err) {
-  console.warn("Firebase init notice:", err);
+} catch (e) {
+  console.error("Firebase setup error:", e);
 }
 
 const DEFAULT_TASKS = [
@@ -54,124 +55,100 @@ let tempImg = "";
 let selWeek = 1;
 let tempWeekSuggestion = {};
 
+function $(id) {
+  return document.getElementById(id);
+}
+
 function todayStr() {
   const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return (
+    d.getFullYear() +
+    "-" +
+    String(d.getMonth() + 1).padStart(2, "0") +
+    "-" +
+    String(d.getDate()).padStart(2, "0")
+  );
 }
 
 function getDayNum() {
   if (!S.start) return 1;
-  const s = new Date(`${S.start}T00:00:00`);
-  const t = new Date(`${todayStr()}T00:00:00`);
+  const s = new Date(S.start + "T00:00:00");
+  const t = new Date(todayStr() + "T00:00:00");
+  if (isNaN(s.getTime()) || isNaN(t.getTime())) return 1;
   const diff = Math.floor((t - s) / 86400000) + 1;
   return Math.max(1, Math.min(90, diff));
 }
 
 function getDayOfWeek(dayNum) {
   if (!S.start) return new Date().getDay();
-  const s = new Date(`${S.start}T00:00:00`);
+  const s = new Date(S.start + "T00:00:00");
+  if (isNaN(s.getTime())) return new Date().getDay();
   s.setDate(s.getDate() + (dayNum - 1));
   return s.getDay();
 }
 
 function showToast(msg) {
-  const el = document.getElementById("toast");
+  const el = $("toast");
   if (!el) return;
   el.textContent = msg;
   el.style.display = "block";
-  clearTimeout(showToast._timer);
-  showToast._timer = setTimeout(() => {
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => {
     el.style.display = "none";
-  }, 2400);
+  }, 2500);
 }
 
-async function save() {
+function saveLocal() {
   try {
-    localStorage.setItem("challenge90_backup", JSON.stringify(S));
-  } catch (_) {}
-
-  if (!docRef) return;
-  try {
-    await docRef.set(S, { merge: true });
+    localStorage.setItem("challenge90_state_v2", JSON.stringify(S));
   } catch (e) {
-    console.warn("Cloud save warning:", e);
-    showToast("⚠️ تعذر الحفظ في السحابة، تم الحفظ محلياً");
+    console.warn("LocalStorage warning:", e);
   }
 }
 
-function normalizeStories(rawStories) {
-  const out = {};
-  if (!rawStories || typeof rawStories !== "object") return out;
-  for (const key of Object.keys(rawStories)) {
-    const val = rawStories[key];
-    if (Array.isArray(val)) {
-      out[key] = val;
-    } else if (val && typeof val === "object") {
-      out[key] = [val];
-    }
-  }
-  return out;
-}
-
-function applyLoadedData(data) {
-  S.start = (data && data.start) || todayStr();
-  S.tasks = (data && Array.isArray(data.tasks) && data.tasks.length > 0)
-    ? data.tasks
-    : DEFAULT_TASKS.map((t) => ({ ...t, days: [...t.days] }));
-  S.dayStatus = (data && data.dayStatus && typeof data.dayStatus === "object") ? data.dayStatus : {};
-  S.dayTasks = (data && data.dayTasks && typeof data.dayTasks === "object") ? data.dayTasks : {};
-  S.stories = normalizeStories(data && data.stories);
-  S.rewards = (data && Array.isArray(data.rewards)) ? data.rewards : [];
-  S.weekRewards = (data && data.weekRewards && typeof data.weekRewards === "object") ? data.weekRewards : {};
-  S.ba = (data && Array.isArray(data.ba)) ? data.ba : [];
-}
-
-async function initApp() {
-  // عرض فوري للبيانات الافتراضية أو المحلية حتى لا تبقى الشاشة فارغة أبداً
-  let loadedFromLocal = false;
-  try {
-    const localRaw = localStorage.getItem("challenge90_backup");
-    if (localRaw) {
-      applyLoadedData(JSON.parse(localRaw));
-      loadedFromLocal = true;
-    } else {
-      applyLoadedData({});
-    }
-  } catch (_) {
-    applyLoadedData({});
-  }
-  render();
-
+async function saveCloud() {
+  saveLocal();
   if (!docRef) return;
-  showToast("⏳ جاري المزامنة...");
-
   try {
-    const snap = await Promise.race([
-      docRef.get(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 6000))
-    ]);
-
-    if (snap && snap.exists) {
-      applyLoadedData(snap.data());
-      if (!snap.data().tasks || snap.data().tasks.length === 0) {
-        await save();
-      }
-      showToast("✅ تمت المزامنة");
-    } else if (!loadedFromLocal) {
-      applyLoadedData({});
-      await save();
-      showToast("✅ تم تهيئة التحدي");
-    }
-  } catch (_) {
-    showToast("ℹ️ يعمل بالوضع المحلي حالياً");
+    await docRef.set(JSON.parse(JSON.stringify(S)), { merge: true });
+  } catch (e) {
+    console.warn("Firestore save warning:", e);
   }
-  render();
+}
+
+function normalizeStories(raw) {
+  const res = {};
+  if (!raw || typeof raw !== "object") return res;
+  for (const k of Object.keys(raw)) {
+    const v = raw[k];
+    if (Array.isArray(v)) {
+      res[k] = v;
+    } else if (v && typeof v === "object") {
+      res[k] = [v];
+    }
+  }
+  return res;
+}
+
+function loadStateObject(data) {
+  const d = data && typeof data === "object" ? data : {};
+  S.start = d.start || todayStr();
+  S.tasks =
+    Array.isArray(d.tasks) && d.tasks.length > 0
+      ? d.tasks
+      : DEFAULT_TASKS.map((t) => ({ id: t.id, n: t.n, e: t.e, days: [...t.days] }));
+  S.dayStatus = d.dayStatus && typeof d.dayStatus === "object" ? d.dayStatus : {};
+  S.dayTasks = d.dayTasks && typeof d.dayTasks === "object" ? d.dayTasks : {};
+  S.stories = normalizeStories(d.stories);
+  S.rewards = Array.isArray(d.rewards) ? d.rewards : [];
+  S.weekRewards = d.weekRewards && typeof d.weekRewards === "object" ? d.weekRewards : {};
+  S.ba = Array.isArray(d.ba) ? d.ba : [];
 }
 
 function compressImg(file, maxW = 700, quality = 0.65) {
   return new Promise((resolve) => {
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = (ev) => {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement("canvas");
@@ -187,198 +164,216 @@ function compressImg(file, maxW = 700, quality = 0.65) {
         ctx.drawImage(img, 0, 0, w, h);
         resolve(canvas.toDataURL("image/jpeg", quality));
       };
-      img.src = e.target.result;
+      img.onerror = () => resolve("");
+      img.src = ev.target.result;
     };
+    reader.onerror = () => resolve("");
     reader.readAsDataURL(file);
   });
 }
 
 function render() {
-  try {
-    const dn = getDayNum();
-    const dnEl = document.getElementById("dn");
-    if (dnEl) dnEl.textContent = dn;
+  const dn = getDayNum();
+  if ($("dn")) $("dn").textContent = dn;
 
-    const ringEl = document.getElementById("ring");
-    if (ringEl) {
-      ringEl.style.setProperty("--p", Math.round((dn / 90) * 100));
-    }
-
-    if (!S.dayTasks[dn]) {
-      S.dayTasks[dn] = JSON.parse(JSON.stringify(S.tasks));
-    }
-    if (!S.dayStatus[dn]) {
-      S.dayStatus[dn] = {};
-    }
-
-    // شريط الستوريات لليوم الحالي
-    const storiesEl = document.getElementById("stories");
-    if (storiesEl) {
-      storiesEl.innerHTML = "";
-      const dayStories = S.stories[dn] || [];
-      dayStories.forEach((st, idx) => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "st has";
-        btn.innerHTML = `<i style="${st.img ? `background-image:url('${st.img}')` : ""}">${st.img ? "" : "📝"}</i>ستوري ${idx + 1}`;
-        btn.onclick = () => viewExistingStory(dn, idx);
-        storiesEl.appendChild(btn);
-      });
-
-      const addSt = document.createElement("button");
-      addSt.type = "button";
-      addSt.className = "st add-story today";
-      addSt.innerHTML = `<i>+</i>إضافة`;
-      addSt.onclick = () => openNewStoryModal(dn);
-      storiesEl.appendChild(addSt);
-    }
-
-    // قائمة المهام المجدولة لليوم الحالي
-    const currentDow = getDayOfWeek(dn);
-    const baseTasks = S.dayTasks[dn] || S.tasks;
-    const activeTasks = baseTasks.filter((t) => !t.days || t.days.includes(currentDow));
-    const statusMap = S.dayStatus[dn] || {};
-
-    const tasksEl = document.getElementById("tasks");
-    if (tasksEl) {
-      tasksEl.innerHTML = "";
-      if (activeTasks.length === 0) {
-        tasksEl.innerHTML = `<div class="ph" style="padding:20px;">لا توجد مهام مجدولة لهذا اليوم. أضف تحدياً جديداً من الزر بالأعلى.</div>`;
-      } else {
-        activeTasks.forEach((t) => {
-          const st = statusMap[t.id];
-          const card = document.createElement("div");
-          card.className = "tk" + (st === "success" ? " success" : st === "fail" ? " fail" : "");
-          card.innerHTML = `
-            <div class="tk-info">
-              <span class="e">${t.e || "🔥"}</span>
-              <span class="n">${t.n}</span>
-            </div>
-            <div class="tk-actions">
-              <button type="button" class="act-btn success-btn ${st === "success" ? "active" : ""}" onclick="setTaskStatus('${t.id}', 'success')">✓ نجاح</button>
-              <button type="button" class="act-btn fail-btn ${st === "fail" ? "active" : ""}" onclick="setTaskStatus('${t.id}', 'fail')">✕ فشل</button>
-              <button type="button" class="tool-ic" title="تعديل" onclick="editTask('${t.id}')">✏️</button>
-              <button type="button" class="tool-ic" title="حذف" onclick="delTask('${t.id}')">🗑️</button>
-            </div>
-          `;
-          tasksEl.appendChild(card);
-        });
-      }
-    }
-
-    const total = activeTasks.length;
-    const completed = Object.keys(statusMap).filter((id) => activeTasks.some((t) => t.id === id) && statusMap[id] === "success").length;
-    const pct = total ? Math.round((completed / total) * 100) : 0;
-
-    const pctEl = document.getElementById("pct");
-    const barEl = document.getElementById("bar");
-    if (pctEl) pctEl.textContent = `إنجاز اليوم: ${completed} من ${total} نجاح (${pct}%)`;
-    if (barEl) barEl.style.width = `${pct}%`;
-
-    renderArchive(dn);
-  } catch (err) {
-    console.error("Render error:", err);
+  if ($("ring")) {
+    $("ring").style.setProperty("--p", Math.round((dn / 90) * 100));
   }
+
+  if (!S.dayTasks[dn]) {
+    S.dayTasks[dn] = JSON.parse(JSON.stringify(S.tasks));
+  }
+  if (!S.dayStatus[dn]) {
+    S.dayStatus[dn] = {};
+  }
+
+  // رسم الستوريات لليوم الحالي
+  const storiesEl = $("stories");
+  if (storiesEl) {
+    storiesEl.innerHTML = "";
+    const list = S.stories[dn] || [];
+    list.forEach((st, idx) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "st has";
+      btn.innerHTML = `<i style="${st.img ? `background-image:url('${st.img}')` : ""}">${st.img ? "" : "📝"}</i>ستوري ${idx + 1}`;
+      btn.addEventListener("click", () => viewExistingStory(dn, idx));
+      storiesEl.appendChild(btn);
+    });
+
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "st add-story today";
+    addBtn.innerHTML = `<i>+</i>إضافة`;
+    addBtn.addEventListener("click", () => openNewStoryModal(dn));
+    storiesEl.appendChild(addBtn);
+  }
+
+  // رسم مهام اليوم الحالي
+  const dow = getDayOfWeek(dn);
+  const baseTasks = S.dayTasks[dn] || S.tasks;
+  const activeTasks = baseTasks.filter((t) => !Array.isArray(t.days) || t.days.includes(dow));
+  const statusMap = S.dayStatus[dn] || {};
+
+  const tasksEl = $("tasks");
+  if (tasksEl) {
+    tasksEl.innerHTML = "";
+    if (!activeTasks.length) {
+      tasksEl.innerHTML = `<div class="ph" style="padding:18px;">لا توجد مهام مجدولة لهذا اليوم.</div>`;
+    } else {
+      activeTasks.forEach((t) => {
+        const st = statusMap[t.id];
+        const card = document.createElement("div");
+        card.className = "tk" + (st === "success" ? " success" : st === "fail" ? " fail" : "");
+
+        const info = document.createElement("div");
+        info.className = "tk-info";
+        info.innerHTML = `<span class="e">${t.e || "🔥"}</span><span class="n">${t.n}</span>`;
+
+        const actions = document.createElement("div");
+        actions.className = "tk-actions";
+
+        const okBtn = document.createElement("button");
+        okBtn.type = "button";
+        okBtn.className = "act-btn success-btn" + (st === "success" ? " active" : "");
+        okBtn.textContent = "✓ نجاح";
+        okBtn.addEventListener("click", () => toggleStatus(t.id, "success"));
+
+        const noBtn = document.createElement("button");
+        noBtn.type = "button";
+        noBtn.className = "act-btn fail-btn" + (st === "fail" ? " active" : "");
+        noBtn.textContent = "✕ فشل";
+        noBtn.addEventListener("click", () => toggleStatus(t.id, "fail"));
+
+        const edBtn = document.createElement("button");
+        edBtn.type = "button";
+        edBtn.className = "tool-ic";
+        edBtn.title = "تعديل";
+        edBtn.textContent = "✏️";
+        edBtn.addEventListener("click", () => openTaskModal(t));
+
+        const dlBtn = document.createElement("button");
+        dlBtn.type = "button";
+        dlBtn.className = "tool-ic";
+        dlBtn.title = "حذف";
+        dlBtn.textContent = "🗑️";
+        dlBtn.addEventListener("click", () => deleteTask(t.id));
+
+        actions.appendChild(okBtn);
+        actions.appendChild(noBtn);
+        actions.appendChild(edBtn);
+        actions.appendChild(dlBtn);
+
+        card.appendChild(info);
+        card.appendChild(actions);
+        tasksEl.appendChild(card);
+      });
+    }
+  }
+
+  const total = activeTasks.length;
+  const doneCount = Object.keys(statusMap).filter(
+    (id) => activeTasks.some((t) => t.id === id) && statusMap[id] === "success"
+  ).length;
+  const pct = total ? Math.round((doneCount / total) * 100) : 0;
+
+  if ($("pct")) $("pct").textContent = `إنجاز اليوم: ${doneCount} من ${total} نجاح (${pct}%)`;
+  if ($("bar")) $("bar").style.width = `${pct}%`;
+
+  renderArchive(dn);
 }
 
-window.setTaskStatus = async function (id, status) {
+async function toggleStatus(taskId, status) {
   const dn = getDayNum();
   if (!S.dayStatus[dn]) S.dayStatus[dn] = {};
-  if (S.dayStatus[dn][id] === status) {
-    delete S.dayStatus[dn][id];
+  if (S.dayStatus[dn][taskId] === status) {
+    delete S.dayStatus[dn][taskId];
   } else {
-    S.dayStatus[dn][id] = status;
+    S.dayStatus[dn][taskId] = status;
   }
   render();
-  await save();
-};
+  await saveCloud();
+}
 
 function openTaskModal(task = null) {
   editId = task ? task.id : null;
-  document.getElementById("tmT").textContent = task ? "تعديل التحدي" : "تحدي جديد";
-  document.getElementById("tmN").value = task ? task.n : "";
+  if ($("tmT")) $("tmT").textContent = task ? "تعديل التحدي" : "تحدي جديد";
+  if ($("tmN")) $("tmN").value = task ? task.n : "";
   selEmoji = task && task.e ? task.e : EMOJIS[0];
 
-  const schedEl = document.getElementById("taskSchedule");
-  const daysArr = task && Array.isArray(task.days) ? task.days : [0, 1, 2, 3, 4, 5, 6];
-  if (daysArr.length === 7) schedEl.value = "all";
-  else if (daysArr.length === 1 && daysArr[0] === 5) schedEl.value = "fri";
-  else if (daysArr.length === 2 && daysArr.includes(5) && daysArr.includes(6)) schedEl.value = "weekend";
-  else schedEl.value = "sat_thu";
+  const schedEl = $("taskSchedule");
+  if (schedEl) {
+    const daysArr = task && Array.isArray(task.days) ? task.days : [0, 1, 2, 3, 4, 5, 6];
+    if (daysArr.length === 7) schedEl.value = "all";
+    else if (daysArr.length === 1 && daysArr[0] === 5) schedEl.value = "fri";
+    else if (daysArr.length === 2 && daysArr.includes(5) && daysArr.includes(6)) schedEl.value = "weekend";
+    else schedEl.value = "sat_thu";
+  }
 
-  const emoEl = document.getElementById("emo");
-  emoEl.innerHTML = EMOJIS.map((e) => `<button type="button" class="${e === selEmoji ? "a" : ""}" onclick="selectEmoji('${e}')">${e}</button>`).join("");
-  document.getElementById("tm").classList.add("s");
+  const emoEl = $("emo");
+  if (emoEl) {
+    emoEl.innerHTML = "";
+    EMOJIS.forEach((em) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = em === selEmoji ? "a" : "";
+      b.textContent = em;
+      b.addEventListener("click", () => {
+        selEmoji = em;
+        emoEl.querySelectorAll("button").forEach((x) => x.classList.toggle("a", x.textContent === em));
+      });
+      emoEl.appendChild(b);
+    });
+  }
+
+  if ($("tm")) $("tm").classList.add("s");
 }
 
-window.selectEmoji = function (e) {
-  selEmoji = e;
-  document.querySelectorAll("#emo button").forEach((el) => el.classList.toggle("a", el.textContent === e));
-};
-
-window.editTask = function (id) {
-  const t = S.tasks.find((x) => x.id === id);
-  if (t) openTaskModal(t);
-};
-
-window.delTask = async function (id) {
-  if (!confirm("هل تريد حذف هذا التحدي من القائمة المستقبلية؟")) return;
-  S.tasks = S.tasks.filter((x) => x.id !== id);
+async function deleteTask(taskId) {
+  if (!confirm("هل تريد حذف هذا التحدي من القائمة الحالية والمستقبلية؟")) return;
+  S.tasks = S.tasks.filter((t) => t.id !== taskId);
   const dn = getDayNum();
   if (S.dayTasks[dn]) {
-    S.dayTasks[dn] = S.dayTasks[dn].filter((x) => x.id !== id);
+    S.dayTasks[dn] = S.dayTasks[dn].filter((t) => t.id !== taskId);
   }
   render();
-  await save();
+  await saveCloud();
   showToast("تم حذف التحدي");
-};
-
-// إدارة المكافآت
-function renderRewardsList() {
-  const listEl = document.getElementById("rewardsList");
-  if (!listEl) return;
-  if (!S.rewards.length) {
-    listEl.innerHTML = `<div class="ph" style="padding:12px;">لا توجد مكافآت بعد. أضف مكافأتك الأولى بالأعلى.</div>`;
-    return;
-  }
-  listEl.innerHTML = S.rewards.map((r, idx) => `
-    <div style="display:flex; justify-content:space-between; align-items:center; background:var(--card); padding:10px 14px; border-radius:10px; border:1px solid var(--bd);">
-      <span style="font-size:14px;">🎁 ${r}</span>
-      <button type="button" onclick="deleteReward(${idx})" style="background:none; border:0; color:var(--no); cursor:pointer; font-size:16px;">🗑️</button>
-    </div>
-  `).join("");
 }
 
-window.deleteReward = async function (idx) {
-  S.rewards.splice(idx, 1);
-  renderRewardsList();
-  renderArchive(getDayNum());
-  await save();
-  showToast("تم حذف المكافأة");
-};
-
-window.pickRandomReward = function (week) {
+// المكافآت
+function renderRewardsModalList() {
+  const box = $("rewardsList");
+  if (!box) return;
+  box.innerHTML = "";
   if (!S.rewards.length) {
-    showToast("أضف مكافآت أولاً من زر (قائمة المكافآت)");
+    box.innerHTML = `<div class="ph" style="padding:10px;">لا توجد مكافآت مضافة بعد.</div>`;
     return;
   }
-  let pool = [...S.rewards];
-  if (pool.length > 1 && tempWeekSuggestion[week]) {
-    pool = pool.filter((r) => r !== tempWeekSuggestion[week]);
-  }
-  tempWeekSuggestion[week] = pool[Math.floor(Math.random() * pool.length)];
-  renderArchive(getDayNum());
-};
+  S.rewards.forEach((r, idx) => {
+    const row = document.createElement("div");
+    row.style.cssText =
+      "display:flex; justify-content:space-between; align-items:center; background:var(--card); padding:10px 14px; border-radius:10px; border:1px solid var(--bd);";
+    const span = document.createElement("span");
+    span.textContent = `🎁 ${r}`;
 
-window.claimWeekReward = async function (week) {
-  const chosen = tempWeekSuggestion[week];
-  if (!chosen) return;
-  S.weekRewards[week] = chosen;
-  delete tempWeekSuggestion[week];
-  renderArchive(getDayNum());
-  await save();
-  showToast("🎉 تم اعتماد مكافأة الأسبوع");
-};
+    const del = document.createElement("button");
+    del.type = "button";
+    del.style.cssText = "background:none; border:0; color:var(--no); cursor:pointer; font-size:16px;";
+    del.textContent = "🗑️";
+    del.addEventListener("click", async () => {
+      S.rewards.splice(idx, 1);
+      renderRewardsModalList();
+      renderArchive(getDayNum());
+      await saveCloud();
+      showToast("تم حذف المكافأة");
+    });
+
+    row.appendChild(span);
+    row.appendChild(del);
+    box.appendChild(row);
+  });
+}
 
 // الستوريات
 function viewExistingStory(day, index) {
@@ -388,105 +383,115 @@ function viewExistingStory(day, index) {
   const st = list[index];
   if (!st) return;
 
-  document.getElementById("svT").textContent = `ستوري يوم ${day} (${index + 1}/${list.length})`;
-  document.getElementById("svM").innerHTML = `
-    ${st.img ? `<img src="${st.img}" alt="ستوري" />` : `<div class="ph">ستوري نصي</div>`}
-    ${st.note ? `<div class="note-box">${st.note}</div>` : ""}
-  `;
-  document.getElementById("storyInputArea").style.display = "none";
-  document.getElementById("storyDeleteBtn").style.display = "flex";
-  document.getElementById("sv").classList.add("s");
+  if ($("svT")) $("svT").textContent = `ستوري يوم ${day} (${index + 1}/${list.length})`;
+  if ($("svM")) {
+    $("svM").innerHTML = `
+      ${st.img ? `<img src="${st.img}" alt="ستوري" />` : `<div class="ph">ستوري نصي</div>`}
+      ${st.note ? `<div class="note-box">${st.note}</div>` : ""}
+    `;
+  }
+  if ($("storyInputArea")) $("storyInputArea").style.display = "none";
+  if ($("storyDeleteBtn")) $("storyDeleteBtn").style.display = "flex";
+  if ($("sv")) $("sv").classList.add("s");
 }
 
 function openNewStoryModal(day) {
   curStoryDay = day;
   activeStoryIndex = null;
   tempImg = "";
-  document.getElementById("svT").textContent = `إضافة ستوري ليوم ${day}`;
-  document.getElementById("svM").innerHTML = `<div class="ph">اختر صورة من الكاميرا أو المعرض</div>`;
-  document.getElementById("svN").value = "";
-  document.getElementById("storyInputArea").style.display = "flex";
-  document.getElementById("storyDeleteBtn").style.display = "none";
-  document.getElementById("sv").classList.add("s");
+  if ($("svT")) $("svT").textContent = `إضافة ستوري ليوم ${day}`;
+  if ($("svM")) $("svM").innerHTML = `<div class="ph">اختر صورة من الكاميرا أو المعرض</div>`;
+  if ($("svN")) $("svN").value = "";
+  if ($("fiCam")) $("fiCam").value = "";
+  if ($("fiGal")) $("fiGal").value = "";
+  if ($("storyInputArea")) $("storyInputArea").style.display = "flex";
+  if ($("storyDeleteBtn")) $("storyDeleteBtn").style.display = "none";
+  if ($("sv")) $("sv").classList.add("s");
 }
 
-async function handleStoryFile(e) {
+async function handleStoryPick(e) {
   const file = e.target.files && e.target.files[0];
   if (!file) return;
   tempImg = await compressImg(file);
-  document.getElementById("svM").innerHTML = `<img src="${tempImg}" alt="معاينة" />`;
+  if ($("svM")) {
+    $("svM").innerHTML = tempImg
+      ? `<img src="${tempImg}" alt="معاينة" />`
+      : `<div class="ph">تعذر تحميل الصورة</div>`;
+  }
 }
 
 // تفاصيل اليوم في الأرشيف
 function openArchiveDayDetail(day) {
-  document.getElementById("ddTitle").textContent = `سجل اليوم ${day}`;
+  if ($("ddTitle")) $("ddTitle").textContent = `سجل اليوم ${day}`;
 
-  const ddStoriesEl = document.getElementById("ddStories");
-  ddStoriesEl.innerHTML = "";
-  const dayStories = S.stories[day] || [];
+  const ddStoriesEl = $("ddStories");
+  if (ddStoriesEl) {
+    ddStoriesEl.innerHTML = "";
+    const list = S.stories[day] || [];
+    list.forEach((st, idx) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "st has";
+      btn.innerHTML = `<i style="${st.img ? `background-image:url('${st.img}')` : ""}">${st.img ? "" : "📝"}</i>ستوري ${idx + 1}`;
+      btn.addEventListener("click", () => viewExistingStory(day, idx));
+      ddStoriesEl.appendChild(btn);
+    });
 
-  dayStories.forEach((st, idx) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "st has";
-    btn.innerHTML = `<i style="${st.img ? `background-image:url('${st.img}')` : ""}">${st.img ? "" : "📝"}</i>ستوري ${idx + 1}`;
-    btn.onclick = () => viewExistingStory(day, idx);
-    ddStoriesEl.appendChild(btn);
-  });
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "st add-story";
+    addBtn.innerHTML = `<i>+</i>إضافة`;
+    addBtn.addEventListener("click", () => openNewStoryModal(day));
+    ddStoriesEl.appendChild(addBtn);
+  }
 
-  const addSt = document.createElement("button");
-  addSt.type = "button";
-  addSt.className = "st add-story";
-  addSt.innerHTML = `<i>+</i>إضافة`;
-  addSt.onclick = () => openNewStoryModal(day);
-  ddStoriesEl.appendChild(addSt);
+  const ddTasksEl = $("ddTasksList");
+  if (ddTasksEl) {
+    ddTasksEl.innerHTML = "";
+    const dow = getDayOfWeek(day);
+    const rawTasks = S.dayTasks[day];
+    const statusMap = S.dayStatus[day] || {};
 
-  const ddTasksEl = document.getElementById("ddTasksList");
-  ddTasksEl.innerHTML = "";
-
-  const dayDow = getDayOfWeek(day);
-  const rawTasks = S.dayTasks[day];
-  const statusMap = S.dayStatus[day] || {};
-
-  if (!rawTasks) {
-    ddTasksEl.innerHTML = `<div class="ph" style="padding:10px;">لا يوجد سجل محفوظ لهذا اليوم بعد.</div>`;
-  } else {
-    const scheduled = rawTasks.filter((t) => !t.days || t.days.includes(dayDow));
-    if (!scheduled.length) {
-      ddTasksEl.innerHTML = `<div class="ph" style="padding:10px;">لم تكن هناك مهام مجدولة في هذا اليوم.</div>`;
+    if (!Array.isArray(rawTasks)) {
+      ddTasksEl.innerHTML = `<div class="ph" style="padding:10px;">لا يوجد سجل محفوظ لهذا اليوم.</div>`;
     } else {
-      scheduled.forEach((t) => {
-        const st = statusMap[t.id];
-        let badge = `<span style="font-size:12px; color:var(--mu); background:var(--bg); padding:4px 10px; border-radius:8px;">— لم يُحدد</span>`;
-        let borderColor = "var(--bd)";
+      const scheduled = rawTasks.filter((t) => !Array.isArray(t.days) || t.days.includes(dow));
+      if (!scheduled.length) {
+        ddTasksEl.innerHTML = `<div class="ph" style="padding:10px;">لم تكن هناك مهام مجدولة في هذا اليوم.</div>`;
+      } else {
+        scheduled.forEach((t) => {
+          const st = statusMap[t.id];
+          let badge = `<span style="font-size:12px; color:var(--mu); background:var(--bg); padding:4px 10px; border-radius:8px;">— لم يُحدد</span>`;
+          let borderColor = "var(--bd)";
 
-        if (st === "success") {
-          badge = `<span style="font-size:12px; color:#052e1d; background:var(--ok); font-weight:bold; padding:4px 10px; border-radius:8px;">✓ نجاح</span>`;
-          borderColor = "var(--ok)";
-        } else if (st === "fail") {
-          badge = `<span style="font-size:12px; color:#450a0a; background:var(--no); font-weight:bold; padding:4px 10px; border-radius:8px;">✕ فشل</span>`;
-          borderColor = "var(--no)";
-        }
+          if (st === "success") {
+            badge = `<span style="font-size:12px; color:#052e1d; background:var(--ok); font-weight:bold; padding:4px 10px; border-radius:8px;">✓ نجاح</span>`;
+            borderColor = "var(--ok)";
+          } else if (st === "fail") {
+            badge = `<span style="font-size:12px; color:#450a0a; background:var(--no); font-weight:bold; padding:4px 10px; border-radius:8px;">✕ فشل</span>`;
+            borderColor = "var(--no)";
+          }
 
-        const row = document.createElement("div");
-        row.style.cssText = `display:flex; align-items:center; justify-content:space-between; background:var(--card); border:1px solid ${borderColor}; border-radius:12px; padding:10px 14px;`;
-        row.innerHTML = `
-          <div style="display:flex; align-items:center; gap:10px;">
-            <span style="font-size:20px;">${t.e || "🔥"}</span>
-            <span style="font-size:14px; font-weight:600;">${t.n}</span>
-          </div>
-          ${badge}
-        `;
-        ddTasksEl.appendChild(row);
-      });
+          const row = document.createElement("div");
+          row.style.cssText = `display:flex; align-items:center; justify-content:space-between; background:var(--card); border:1px solid ${borderColor}; border-radius:12px; padding:10px 14px;`;
+          row.innerHTML = `
+            <div style="display:flex; align-items:center; gap:10px;">
+              <span style="font-size:20px;">${t.e || "🔥"}</span>
+              <span style="font-size:14px; font-weight:600;">${t.n}</span>
+            </div>
+            ${badge}
+          `;
+          ddTasksEl.appendChild(row);
+        });
+      }
     }
   }
 
-  document.getElementById("dayDetailModal").classList.add("s");
+  if ($("dayDetailModal")) $("dayDetailModal").classList.add("s");
 }
 
 function renderArchive(dn) {
-  const wkEl = document.getElementById("wk");
+  const wkEl = $("wk");
   if (wkEl) {
     wkEl.innerHTML = "";
     for (let w = 1; w <= 13; w++) {
@@ -494,10 +499,10 @@ function renderArchive(dn) {
       b.type = "button";
       b.className = w === selWeek ? "a" : "";
       b.textContent = `أسبوع ${w}`;
-      b.onclick = () => {
+      b.addEventListener("click", () => {
         selWeek = w;
         renderArchive(dn);
-      };
+      });
       wkEl.appendChild(b);
     }
   }
@@ -508,9 +513,9 @@ function renderArchive(dn) {
   let weekTotal = 0;
   let weekSuccess = 0;
   for (let d = startD; d <= endD; d++) {
-    if (S.dayTasks[d]) {
-      const dayDow = getDayOfWeek(d);
-      const tList = S.dayTasks[d].filter((t) => !t.days || t.days.includes(dayDow));
+    if (Array.isArray(S.dayTasks[d])) {
+      const dow = getDayOfWeek(d);
+      const tList = S.dayTasks[d].filter((t) => !Array.isArray(t.days) || t.days.includes(dow));
       const sMap = S.dayStatus[d] || {};
       weekTotal += tList.length;
       weekSuccess += tList.filter((t) => sMap[t.id] === "success").length;
@@ -518,47 +523,85 @@ function renderArchive(dn) {
   }
 
   const weekPct = weekTotal > 0 ? Math.round((weekSuccess / weekTotal) * 100) : 0;
-  const rewardCardEl = document.getElementById("weekRewardCard");
-  if (rewardCardEl) {
+  const cardEl = $("weekRewardCard");
+  if (cardEl) {
+    cardEl.innerHTML = "";
     const claimed = S.weekRewards[selWeek];
     const suggested = tempWeekSuggestion[selWeek];
 
     if (claimed) {
-      rewardCardEl.className = "reward-box unlocked";
-      rewardCardEl.innerHTML = `
+      cardEl.className = "reward-box unlocked";
+      cardEl.innerHTML = `
         <div style="font-size:12px; color:var(--ok); font-weight:bold;">🏆 مكافأة الأسبوع ${selWeek} المعتمدة (${weekPct}%)</div>
         <div style="font-size:16px; font-weight:bold; margin-top:4px;">🎁 ${claimed}</div>
       `;
     } else if (weekPct >= 70) {
-      rewardCardEl.className = "reward-box unlocked";
+      cardEl.className = "reward-box unlocked";
       if (!S.rewards.length) {
-        rewardCardEl.innerHTML = `
+        cardEl.innerHTML = `
           <div style="font-size:13px; color:var(--ok); font-weight:bold;">🎉 إنجاز رائع (${weekPct}%) في الأسبوع ${selWeek}</div>
-          <div style="font-size:12px; color:var(--mu); margin-top:4px;">أضف مكافآتك من (🎁 قائمة المكافآت) لاختيار واحدة.</div>
+          <div style="font-size:12px; color:var(--mu); margin-top:4px;">أضف مكافآتك من (🎁 قائمة المكافآت) لسحب مكافأة.</div>
         `;
       } else if (!suggested) {
-        rewardCardEl.innerHTML = `
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-            <div>
-              <div style="font-size:13px; color:var(--ok); font-weight:bold;">🎉 مبروك! حققت ${weekPct}% في الأسبوع ${selWeek}</div>
-              <div style="font-size:12px; color:var(--mu); margin-top:2px;">اسحب مكافأة من قائمتك</div>
-            </div>
-            <button type="button" class="btn" style="padding:8px 12px; font-size:13px;" onclick="pickRandomReward(${selWeek})">🎁 اسحب مكافأتك</button>
+        const wrapDiv = document.createElement("div");
+        wrapDiv.style.cssText = "display:flex; justify-content:space-between; align-items:center; gap:10px;";
+        wrapDiv.innerHTML = `
+          <div>
+            <div style="font-size:13px; color:var(--ok); font-weight:bold;">🎉 مبروك! حققت ${weekPct}% في الأسبوع ${selWeek}</div>
+            <div style="font-size:12px; color:var(--mu); margin-top:2px;">اسحب مكافأة من قائمتك</div>
           </div>
         `;
+        const pickBtn = document.createElement("button");
+        pickBtn.type = "button";
+        pickBtn.className = "btn";
+        pickBtn.style.cssText = "padding:8px 12px; font-size:13px;";
+        pickBtn.textContent = "🎁 اسحب مكافأتك";
+        pickBtn.addEventListener("click", () => {
+          tempWeekSuggestion[selWeek] = S.rewards[Math.floor(Math.random() * S.rewards.length)];
+          renderArchive(dn);
+        });
+        wrapDiv.appendChild(pickBtn);
+        cardEl.appendChild(wrapDiv);
       } else {
-        rewardCardEl.innerHTML = `
+        cardEl.innerHTML = `
           <div style="font-size:12px; color:var(--ok); font-weight:bold;">✨ المكافأة المقترحة (${weekPct}%):</div>
           <div style="font-size:16px; font-weight:bold; margin:6px 0;">🎁 ${suggested}</div>
-          <div style="display:flex; gap:8px; margin-top:8px;">
-            <button type="button" class="btn" style="flex:1; padding:8px; font-size:13px;" onclick="claimWeekReward(${selWeek})">✅ اعتماد المكافأة</button>
-            <button type="button" class="btn g" style="padding:8px 12px; font-size:13px;" onclick="pickRandomReward(${selWeek})">🔄 اقتراح آخر</button>
-          </div>
         `;
+        const btnRow = document.createElement("div");
+        btnRow.style.cssText = "display:flex; gap:8px; margin-top:8px;";
+
+        const okBtn = document.createElement("button");
+        okBtn.type = "button";
+        okBtn.className = "btn";
+        okBtn.style.cssText = "flex:1; padding:8px; font-size:13px;";
+        okBtn.textContent = "✅ اعتماد المكافأة";
+        okBtn.addEventListener("click", async () => {
+          S.weekRewards[selWeek] = suggested;
+          delete tempWeekSuggestion[selWeek];
+          renderArchive(dn);
+          await saveCloud();
+          showToast("🎉 تم اعتماد المكافأة");
+        });
+
+        const reBtn = document.createElement("button");
+        reBtn.type = "button";
+        reBtn.className = "btn g";
+        reBtn.style.cssText = "padding:8px 12px; font-size:13px;";
+        reBtn.textContent = "🔄 اقتراح آخر";
+        reBtn.addEventListener("click", () => {
+          let pool = [...S.rewards];
+          if (pool.length > 1) pool = pool.filter((x) => x !== suggested);
+          tempWeekSuggestion[selWeek] = pool[Math.floor(Math.random() * pool.length)];
+          renderArchive(dn);
+        });
+
+        btnRow.appendChild(okBtn);
+        btnRow.appendChild(reBtn);
+        cardEl.appendChild(btnRow);
       }
     } else {
-      rewardCardEl.className = "reward-box";
-      rewardCardEl.innerHTML = `
+      cardEl.className = "reward-box";
+      cardEl.innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <div>
             <div style="font-size:13px; font-weight:bold;">📊 تقييم الأسبوع ${selWeek}: ${weekPct}%</div>
@@ -570,21 +613,21 @@ function renderArchive(dn) {
     }
   }
 
-  const wdaysEl = document.getElementById("wdays");
+  const wdaysEl = $("wdays");
   if (wdaysEl) {
     wdaysEl.innerHTML = "";
     for (let d = startD; d <= endD; d++) {
-      const hasStories = S.stories[d] && S.stories[d].length > 0;
-      const hasRecord = !!S.dayTasks[d];
+      const hasStories = Array.isArray(S.stories[d]) && S.stories[d].length > 0;
+      const hasRecord = Array.isArray(S.dayTasks[d]);
       const count = hasStories ? S.stories[d].length : 0;
 
-      let summaryText = "فارغ";
+      let summary = "فارغ";
       if (hasRecord) {
-        const dayDow = getDayOfWeek(d);
-        const tList = S.dayTasks[d].filter((t) => !t.days || t.days.includes(dayDow));
+        const dow = getDayOfWeek(d);
+        const tList = S.dayTasks[d].filter((t) => !Array.isArray(t.days) || t.days.includes(dow));
         const sMap = S.dayStatus[d] || {};
         const okCount = tList.filter((t) => sMap[t.id] === "success").length;
-        summaryText = `${okCount}/${tList.length} نجاح`;
+        summary = `${okCount}/${tList.length} نجاح`;
       }
 
       const item = document.createElement("div");
@@ -593,165 +636,222 @@ function renderArchive(dn) {
       item.innerHTML = `
         <div class="e" style="font-size:22px">${hasStories ? "📸" : hasRecord ? "📋" : "📅"}</div>
         <div class="n" style="font-size:13px; margin-top:4px;">يوم ${d}</div>
-        <div style="font-size:10px; color:var(--mu); margin-top:2px;">${summaryText}${hasStories ? ` • ${count} ستوري` : ""}</div>
+        <div style="font-size:10px; color:var(--mu); margin-top:2px;">${summary}${hasStories ? ` • ${count} ستوري` : ""}</div>
       `;
-      item.onclick = () => openArchiveDayDetail(d);
+      item.addEventListener("click", () => openArchiveDayDetail(d));
       wdaysEl.appendChild(item);
     }
   }
 
-  const baEl = document.getElementById("ba");
+  const baEl = $("ba");
   if (baEl) {
-    baEl.innerHTML = S.ba.map((item, idx) => `
-      <figure>
-        <img src="${item.img}" alt="تطور" />
-        <figcaption>يوم ${item.day} <button type="button" onclick="delBa(${idx})" style="background:none; border:0; color:#f87171; cursor:pointer;">🗑️</button></figcaption>
-      </figure>
-    `).join("");
+    baEl.innerHTML = "";
+    S.ba.forEach((item, idx) => {
+      const fig = document.createElement("figure");
+      fig.innerHTML = `<img src="${item.img}" alt="تطور" />`;
+      const cap = document.createElement("figcaption");
+      cap.textContent = `يوم ${item.day} `;
+      const delBtn = document.createElement("button");
+      delBtn.type = "button";
+      delBtn.style.cssText = "background:none; border:0; color:#f87171; cursor:pointer;";
+      delBtn.textContent = "🗑️";
+      delBtn.addEventListener("click", async () => {
+        S.ba.splice(idx, 1);
+        render();
+        await saveCloud();
+      });
+      cap.appendChild(delBtn);
+      fig.appendChild(cap);
+      baEl.appendChild(fig);
+    });
   }
 }
 
-window.delBa = async function (idx) {
-  S.ba.splice(idx, 1);
-  render();
-  await save();
-};
+function bindUI() {
+  if ($("addBtn")) $("addBtn").addEventListener("click", () => openTaskModal());
+  if ($("tmC")) $("tmC").addEventListener("click", () => $("tm").classList.remove("s"));
 
-function bindEvents() {
-  document.getElementById("addBtn").onclick = () => openTaskModal();
-  document.getElementById("tmC").onclick = () => document.getElementById("tm").classList.remove("s");
+  if ($("tmS")) {
+    $("tmS").addEventListener("click", async () => {
+      const name = $("tmN") ? $("tmN").value.trim() : "";
+      if (!name) return showToast("اكتب اسم التحدي أولاً");
 
-  document.getElementById("tmS").onclick = async () => {
-    const name = document.getElementById("tmN").value.trim();
-    if (!name) return showToast("اكتب اسم التحدي أولاً");
+      const sched = $("taskSchedule") ? $("taskSchedule").value : "all";
+      let targetDays = [0, 1, 2, 3, 4, 5, 6];
+      if (sched === "sat_thu") targetDays = [0, 1, 2, 3, 4, 6];
+      else if (sched === "fri") targetDays = [5];
+      else if (sched === "weekend") targetDays = [5, 6];
 
-    const sched = document.getElementById("taskSchedule").value;
-    let targetDays = [0, 1, 2, 3, 4, 5, 6];
-    if (sched === "sat_thu") targetDays = [0, 1, 2, 3, 4, 6];
-    else if (sched === "fri") targetDays = [5];
-    else if (sched === "weekend") targetDays = [5, 6];
-
-    const dn = getDayNum();
-    if (editId) {
-      S.tasks.forEach((t) => {
-        if (t.id === editId) {
-          t.n = name;
-          t.e = selEmoji;
-          t.days = targetDays;
-        }
-      });
-      if (S.dayTasks[dn]) {
-        S.dayTasks[dn].forEach((t) => {
+      const dn = getDayNum();
+      if (editId) {
+        S.tasks.forEach((t) => {
           if (t.id === editId) {
             t.n = name;
             t.e = selEmoji;
             t.days = targetDays;
           }
         });
+        if (S.dayTasks[dn]) {
+          S.dayTasks[dn].forEach((t) => {
+            if (t.id === editId) {
+              t.n = name;
+              t.e = selEmoji;
+              t.days = targetDays;
+            }
+          });
+        }
+      } else {
+        const newTask = { id: "t" + Date.now(), n: name, e: selEmoji, days: targetDays };
+        S.tasks.push(newTask);
+        if (S.dayTasks[dn]) {
+          S.dayTasks[dn].push(newTask);
+        }
       }
-    } else {
-      const newTask = { id: "t" + Date.now(), n: name, e: selEmoji, days: targetDays };
-      S.tasks.push(newTask);
-      if (S.dayTasks[dn]) {
-        S.dayTasks[dn].push(newTask);
+
+      if ($("tm")) $("tm").classList.remove("s");
+      render();
+      await saveCloud();
+      showToast("تم حفظ التحدي ✅");
+    });
+  }
+
+  if ($("manageRewardsBtn")) {
+    $("manageRewardsBtn").addEventListener("click", () => {
+      renderRewardsModalList();
+      if ($("rewardsModal")) $("rewardsModal").classList.add("s");
+    });
+  }
+  if ($("closeRewardsX")) $("closeRewardsX").addEventListener("click", () => $("rewardsModal").classList.remove("s"));
+  if ($("closeRewardsBtn")) $("closeRewardsBtn").addEventListener("click", () => $("rewardsModal").classList.remove("s"));
+
+  if ($("addRewardBtn")) {
+    $("addRewardBtn").addEventListener("click", async () => {
+      const inp = $("newRewardInput");
+      const val = inp ? inp.value.trim() : "";
+      if (!val) return showToast("اكتب المكافأة أولاً");
+      S.rewards.push(val);
+      inp.value = "";
+      renderRewardsModalList();
+      renderArchive(getDayNum());
+      await saveCloud();
+      showToast("تمت إضافة المكافأة 🎁");
+    });
+  }
+
+  if ($("closeDayDetailX")) $("closeDayDetailX").addEventListener("click", () => $("dayDetailModal").classList.remove("s"));
+  if ($("closeDayDetailBtn")) $("closeDayDetailBtn").addEventListener("click", () => $("dayDetailModal").classList.remove("s"));
+
+  if ($("svX")) $("svX").addEventListener("click", () => $("sv").classList.remove("s"));
+  if ($("fiCam")) $("fiCam").addEventListener("change", handleStoryPick);
+  if ($("fiGal")) $("fiGal").addEventListener("change", handleStoryPick);
+
+  if ($("svS")) {
+    $("svS").addEventListener("click", async () => {
+      const note = $("svN") ? $("svN").value.trim() : "";
+      if (!tempImg && !note) return showToast("أضف صورة أو ملاحظة أولاً");
+
+      if (!S.stories[curStoryDay]) S.stories[curStoryDay] = [];
+      S.stories[curStoryDay].push({ id: "st_" + Date.now(), img: tempImg, note, date: todayStr() });
+      tempImg = "";
+
+      if ($("sv")) $("sv").classList.remove("s");
+      render();
+      if ($("dayDetailModal") && $("dayDetailModal").classList.contains("s")) {
+        openArchiveDayDetail(curStoryDay);
       }
-    }
+      await saveCloud();
+      showToast("تم حفظ الستوري 📸");
+    });
+  }
 
-    document.getElementById("tm").classList.remove("s");
-    render();
-    await save();
-    showToast("تم حفظ التحدي ✅");
-  };
+  if ($("delStoryBtn")) {
+    $("delStoryBtn").addEventListener("click", async () => {
+      if (activeStoryIndex === null || activeStoryIndex === undefined) return;
+      if (!confirm("هل تريد حذف هذا الستوري نهائياً؟")) return;
 
-  document.getElementById("manageRewardsBtn").onclick = () => {
-    renderRewardsList();
-    document.getElementById("rewardsModal").classList.add("s");
-  };
-  document.getElementById("closeRewardsX").onclick = () => document.getElementById("rewardsModal").classList.remove("s");
-  document.getElementById("closeRewardsBtn").onclick = () => document.getElementById("rewardsModal").classList.remove("s");
-
-  document.getElementById("addRewardBtn").onclick = async () => {
-    const inp = document.getElementById("newRewardInput");
-    const val = inp.value.trim();
-    if (!val) return showToast("اكتب اسم المكافأة أولاً");
-    S.rewards.push(val);
-    inp.value = "";
-    renderRewardsList();
-    renderArchive(getDayNum());
-    await save();
-    showToast("تمت إضافة المكافأة 🎁");
-  };
-
-  document.getElementById("closeDayDetailX").onclick = () => document.getElementById("dayDetailModal").classList.remove("s");
-  document.getElementById("closeDayDetailBtn").onclick = () => document.getElementById("dayDetailModal").classList.remove("s");
-
-  document.getElementById("svX").onclick = () => document.getElementById("sv").classList.remove("s");
-  document.getElementById("fiCam").onchange = handleStoryFile;
-  document.getElementById("fiGal").onchange = handleStoryFile;
-
-  document.getElementById("svS").onclick = async () => {
-    const note = document.getElementById("svN").value.trim();
-    if (!tempImg && !note) return showToast("أضف صورة أو ملاحظة أولاً");
-
-    if (!S.stories[curStoryDay]) S.stories[curStoryDay] = [];
-    S.stories[curStoryDay].push({ id: "st_" + Date.now(), img: tempImg, note, date: todayStr() });
-    tempImg = "";
-
-    document.getElementById("sv").classList.remove("s");
-    render();
-    if (document.getElementById("dayDetailModal").classList.contains("s")) {
-      openArchiveDayDetail(curStoryDay);
-    }
-    await save();
-    showToast("تم حفظ الستوري 📸");
-  };
-
-  document.getElementById("delStoryBtn").onclick = async () => {
-    if (activeStoryIndex === null || activeStoryIndex === undefined) return;
-    if (!confirm("هل تريد حذف هذا الستوري نهائياً؟")) return;
-
-    if (S.stories[curStoryDay]) {
-      S.stories[curStoryDay].splice(activeStoryIndex, 1);
-      if (!S.stories[curStoryDay].length) {
-        delete S.stories[curStoryDay];
+      if (S.stories[curStoryDay]) {
+        S.stories[curStoryDay].splice(activeStoryIndex, 1);
+        if (!S.stories[curStoryDay].length) {
+          delete S.stories[curStoryDay];
+        }
       }
-    }
-    document.getElementById("sv").classList.remove("s");
-    render();
-    if (document.getElementById("dayDetailModal").classList.contains("s")) {
-      openArchiveDayDetail(curStoryDay);
-    }
-    await save();
-    showToast("تم حذف الستوري");
-  };
+      if ($("sv")) $("sv").classList.remove("s");
+      render();
+      if ($("dayDetailModal") && $("dayDetailModal").classList.contains("s")) {
+        openArchiveDayDetail(curStoryDay);
+      }
+      await saveCloud();
+      showToast("تم حذف الستوري");
+    });
+  }
 
-  document.getElementById("fiBa").onchange = async (e) => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-    const img = await compressImg(file, 650, 0.65);
-    S.ba.push({ day: getDayNum(), img, date: todayStr() });
-    render();
-    await save();
-    showToast("تمت إضافة صورة التطور ✅");
-  };
+  if ($("fiBa")) {
+    $("fiBa").addEventListener("change", async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const img = await compressImg(file, 650, 0.65);
+      if (!img) return showToast("تعذر قراءة الصورة");
+      S.ba.push({ day: getDayNum(), img, date: todayStr() });
+      render();
+      await saveCloud();
+      showToast("تمت إضافة صورة التطور ✅");
+    });
+  }
 
-  document.getElementById("n1").onclick = () => {
-    document.getElementById("home").classList.remove("hide");
-    document.getElementById("archive").classList.add("hide");
-    document.getElementById("n1").classList.add("a");
-    document.getElementById("n2").classList.remove("a");
-  };
+  if ($("n1")) {
+    $("n1").addEventListener("click", () => {
+      if ($("home")) $("home").classList.remove("hide");
+      if ($("archive")) $("archive").classList.add("hide");
+      $("n1").classList.add("a");
+      if ($("n2")) $("n2").classList.remove("a");
+    });
+  }
 
-  document.getElementById("n2").onclick = () => {
-    document.getElementById("home").classList.add("hide");
-    document.getElementById("archive").classList.remove("hide");
-    document.getElementById("n2").classList.add("a");
-    document.getElementById("n1").classList.remove("a");
-    renderArchive(getDayNum());
-  };
+  if ($("n2")) {
+    $("n2").addEventListener("click", () => {
+      if ($("home")) $("home").classList.add("hide");
+      if ($("archive")) $("archive").classList.remove("hide");
+      $("n2").classList.add("a");
+      if ($("n1")) $("n1").classList.remove("a");
+      renderArchive(getDayNum());
+    });
+  }
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  bindEvents();
-  initApp();
-});
+async function startApp() {
+  bindUI();
+
+  let hasLocal = false;
+  try {
+    const raw = localStorage.getItem("challenge90_state_v2");
+    if (raw) {
+      loadStateObject(JSON.parse(raw));
+      hasLocal = true;
+    } else {
+      loadStateObject({});
+    }
+  } catch (_) {
+    loadStateObject({});
+  }
+
+  render();
+
+  if (!docRef) return;
+  try {
+    const snap = await docRef.get();
+    if (snap && snap.exists) {
+      loadStateObject(snap.data());
+      render();
+    } else if (!hasLocal) {
+      await saveCloud();
+    }
+  } catch (e) {
+    console.warn("Initial cloud sync notice:", e);
+  }
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", startApp);
+} else {
+  startApp();
+}
