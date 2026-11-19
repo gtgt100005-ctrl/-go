@@ -54,6 +54,7 @@ let activeStoryIndex = null;
 let tempImg = "";
 let selWeek = 1;
 let tempWeekSuggestion = {};
+let isInitialSyncDone = false;
 
 function $(id) {
   return document.getElementById(id);
@@ -70,21 +71,32 @@ function todayStr() {
   );
 }
 
+function parseDateOnly(str) {
+  if (!str || typeof str !== "string") return null;
+  const parts = str.trim().split("-");
+  if (parts.length !== 3) return null;
+  const y = Number(parts[0]);
+  const m = Number(parts[1]);
+  const d = Number(parts[2]);
+  if (!y || !m || !d) return null;
+  const dt = new Date(y, m - 1, d, 0, 0, 0, 0);
+  return isNaN(dt.getTime()) ? null : dt;
+}
+
 function getDayNum() {
-  if (!S.start) return 1;
-  const s = new Date(S.start + "T00:00:00");
-  const t = new Date(todayStr() + "T00:00:00");
-  if (isNaN(s.getTime()) || isNaN(t.getTime())) return 1;
-  const diff = Math.floor((t - s) / 86400000) + 1;
-  return Math.max(1, Math.min(90, diff));
+  const s = parseDateOnly(S.start);
+  const now = new Date();
+  const t = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  if (!s) return 1;
+  const diffDays = Math.floor((t.getTime() - s.getTime()) / 86400000) + 1;
+  return Math.max(1, Math.min(90, diffDays));
 }
 
 function getDayOfWeek(dayNum) {
-  if (!S.start) return new Date().getDay();
-  const s = new Date(S.start + "T00:00:00");
-  if (isNaN(s.getTime())) return new Date().getDay();
-  s.setDate(s.getDate() + (dayNum - 1));
-  return s.getDay();
+  const s = parseDateOnly(S.start);
+  if (!s) return new Date().getDay();
+  const target = new Date(s.getFullYear(), s.getMonth(), s.getDate() + (dayNum - 1));
+  return target.getDay();
 }
 
 function showToast(msg) {
@@ -108,7 +120,7 @@ function saveLocal() {
 
 async function saveCloud() {
   saveLocal();
-  if (!docRef) return;
+  if (!docRef || !isInitialSyncDone) return;
   try {
     await docRef.set(JSON.parse(JSON.stringify(S)), { merge: true });
   } catch (e) {
@@ -130,9 +142,23 @@ function normalizeStories(raw) {
   return res;
 }
 
-function loadStateObject(data) {
+function pickEarliestStart(a, b) {
+  const da = parseDateOnly(a);
+  const dbDate = parseDateOnly(b);
+  if (da && dbDate) {
+    return da.getTime() <= dbDate.getTime() ? a : b;
+  }
+  return a || b || todayStr();
+}
+
+function loadStateObject(data, fallbackStart = null) {
   const d = data && typeof data === "object" ? data : {};
-  S.start = d.start || todayStr();
+  const candidateStart = d.start || fallbackStart || S.start || todayStr();
+  S.start = pickEarliestStart(candidateStart, d.start);
+  if (d.start) {
+    S.start = d.start;
+  }
+
   S.tasks =
     Array.isArray(d.tasks) && d.tasks.length > 0
       ? d.tasks
@@ -175,6 +201,7 @@ function compressImg(file, maxW = 700, quality = 0.65) {
 function render() {
   const dn = getDayNum();
   if ($("dn")) $("dn").textContent = dn;
+  if ($("startDateLabel")) $("startDateLabel").textContent = S.start || todayStr();
 
   if ($("ring")) {
     $("ring").style.setProperty("--p", Math.round((dn / 90) * 100));
@@ -187,7 +214,7 @@ function render() {
     S.dayStatus[dn] = {};
   }
 
-  // رسم الستوريات لليوم الحالي
+  // شريط الستوريات لليوم الحالي
   const storiesEl = $("stories");
   if (storiesEl) {
     storiesEl.innerHTML = "";
@@ -209,7 +236,7 @@ function render() {
     storiesEl.appendChild(addBtn);
   }
 
-  // رسم مهام اليوم الحالي
+  // مهام اليوم الحالي
   const dow = getDayOfWeek(dn);
   const baseTasks = S.dayTasks[dn] || S.tasks;
   const activeTasks = baseTasks.filter((t) => !Array.isArray(t.days) || t.days.includes(dow));
@@ -341,7 +368,6 @@ async function deleteTask(taskId) {
   showToast("تم حذف التحدي");
 }
 
-// المكافآت
 function renderRewardsModalList() {
   const box = $("rewardsList");
   if (!box) return;
@@ -375,7 +401,6 @@ function renderRewardsModalList() {
   });
 }
 
-// الستوريات
 function viewExistingStory(day, index) {
   curStoryDay = day;
   activeStoryIndex = index;
@@ -420,7 +445,6 @@ async function handleStoryPick(e) {
   }
 }
 
-// تفاصيل اليوم في الأرشيف
 function openArchiveDayDetail(day) {
   if ($("ddTitle")) $("ddTitle").textContent = `سجل اليوم ${day}`;
 
@@ -668,6 +692,21 @@ function renderArchive(dn) {
 }
 
 function bindUI() {
+  if ($("editStartDateBtn")) {
+    $("editStartDateBtn").addEventListener("click", async () => {
+      const input = prompt("أدخل تاريخ بداية التحدي بصيغة YYYY-MM-DD (مثال: 2026-11-01):", S.start || todayStr());
+      if (!input) return;
+      const parsed = parseDateOnly(input.trim());
+      if (!parsed) {
+        return showToast("صيغة التاريخ غير صحيحة، استخدم YYYY-MM-DD");
+      }
+      S.start = input.trim();
+      render();
+      await saveCloud();
+      showToast("✅ تم تحديث تاريخ بداية التحدي");
+    });
+  }
+
   if ($("addBtn")) $("addBtn").addEventListener("click", () => openTaskModal());
   if ($("tmC")) $("tmC").addEventListener("click", () => $("tm").classList.remove("s"));
 
@@ -821,12 +860,12 @@ function bindUI() {
 async function startApp() {
   bindUI();
 
-  let hasLocal = false;
+  let localData = null;
   try {
     const raw = localStorage.getItem("challenge90_state_v2");
     if (raw) {
-      loadStateObject(JSON.parse(raw));
-      hasLocal = true;
+      localData = JSON.parse(raw);
+      loadStateObject(localData);
     } else {
       loadStateObject({});
     }
@@ -836,16 +875,27 @@ async function startApp() {
 
   render();
 
-  if (!docRef) return;
+  if (!docRef) {
+    isInitialSyncDone = true;
+    return;
+  }
+
   try {
     const snap = await docRef.get();
+    isInitialSyncDone = true;
     if (snap && snap.exists) {
-      loadStateObject(snap.data());
+      const cloudData = snap.data() || {};
+      const mergedStart = pickEarliestStart(cloudData.start, localData && localData.start);
+      loadStateObject({ ...cloudData, start: mergedStart }, mergedStart);
       render();
-    } else if (!hasLocal) {
+      if (!cloudData.start && S.start) {
+        await saveCloud();
+      }
+    } else {
       await saveCloud();
     }
   } catch (e) {
+    isInitialSyncDone = true;
     console.warn("Initial cloud sync notice:", e);
   }
 }
