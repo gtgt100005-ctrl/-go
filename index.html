@@ -14,6 +14,7 @@
     <div id="home">
       <h1>🔥 تحدي الـ 90 يوم</h1>
 
+      <!-- حلقة التقدم الدائرية -->
       <div class="ring" id="ring">
         <div>
           <b id="dn">1</b>
@@ -21,9 +22,10 @@
         </div>
       </div>
 
-      <!-- ستوريات اليوم الحالي -->
+      <!-- ستوريات اليوم الحالي + زر إضافة ستوري جديد -->
       <div class="stories" id="stories"></div>
 
+      <!-- عنوان القائمة وزر إضافة تحدي -->
       <div class="hd">
         <h2>قائمة المهام اليومية</h2>
         <button type="button" class="btn" id="addBtn">+ إضافة تحدي</button>
@@ -32,20 +34,33 @@
       <div class="pct" id="pct">إنجاز اليوم: 0 من 0 (0%)</div>
       <div class="bar"><div id="bar"></div></div>
 
+      <!-- قائمة التحديات بنظام النجاح والفشل -->
       <div class="grid" id="tasks"></div>
     </div>
 
-    <!-- شاشة الأرشيف -->
+    <!-- شاشة الأرشيف والتقارير -->
     <div id="archive" class="hide">
       <div class="hd" style="margin-top:0;">
         <h2 style="font-size:22px;">الأرشيف والتقارير</h2>
         <button type="button" class="btn g" id="manageRewardsBtn">🎁 قائمة المكافآت</button>
       </div>
 
+      <!-- عرض وتعديل تاريخ بداية التحدي -->
+      <div style="display:flex; justify-content:space-between; align-items:center; background:var(--card); padding:10px 14px; border-radius:12px; border:1px solid var(--bd); margin-bottom:12px; font-size:13px;">
+        <span>📅 تاريخ بداية التحدي: <strong id="startDateLabel">—</strong></span>
+        <button type="button" class="btn g" id="editStartDateBtn" style="padding:6px 12px; font-size:12px;">تعديل البداية</button>
+      </div>
+
+      <!-- أزرار الأسابيع -->
       <div class="wk" id="wk"></div>
+
+      <!-- بطاقة تقييم ومكافأة الأسبوع -->
       <div id="weekRewardCard" class="reward-box"></div>
+
+      <!-- أيام الأسبوع المحدد -->
       <div class="days" id="wdays"></div>
 
+      <!-- صور التطور Before & After -->
       <div class="hd" style="margin-top:24px;">
         <h2>صور التطور (Before & After)</h2>
         <label class="btn" for="fiBa">+ أضف صورة</label>
@@ -83,7 +98,7 @@
     </div>
   </div>
 
-  <!-- نافذة إدارة المكافآت -->
+  <!-- نافذة إدارة قائمة المكافآت الخاصة -->
   <div class="ov" id="rewardsModal">
     <div class="md" style="max-height:85vh; overflow-y:auto;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
