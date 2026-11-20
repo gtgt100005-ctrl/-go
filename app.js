@@ -22,7 +22,7 @@ try {
     }
   }
 } catch (e) {
-  console.error("Firebase setup error:", e);
+  console.error("Firebase init error:", e);
 }
 
 const DEFAULT_TASKS = [
@@ -35,6 +35,7 @@ const DEFAULT_TASKS = [
 ];
 
 const EMOJIS = ["🔥", "🕌", "📖", "📚", "💪", "🎓", "🚫", "💧", "🏃", "🧠", "✍️", "💤", "🥗", "💻", "🎯", "⭐"];
+const STORAGE_KEYS = ["challenge90_state_v4", "challenge90_state_v3", "challenge90_state_v2"];
 
 let S = {
   start: null,
@@ -49,22 +50,25 @@ let S = {
 
 let editId = null;
 let selEmoji = EMOJIS[0];
-let curStoryDay = 3;
+let curStoryDay = 1;
 let activeStoryIndex = null;
 let tempImg = "";
 let selWeek = 1;
 let tempWeekSuggestion = {};
-let syncReady = false;
+let cloudSyncFinished = false;
 
 function $(id) {
   return document.getElementById(id);
 }
 
-function formatYMD(dateObj) {
-  const y = dateObj.getFullYear();
-  const m = String(dateObj.getMonth() + 1).padStart(2, "0");
-  const d = String(dateObj.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+function formatYMD(dt) {
+  return (
+    dt.getFullYear() +
+    "-" +
+    String(dt.getMonth() + 1).padStart(2, "0") +
+    "-" +
+    String(dt.getDate()).padStart(2, "0")
+  );
 }
 
 function todayStr() {
@@ -83,18 +87,11 @@ function parseYMD(str) {
   return isNaN(dt.getTime()) ? null : dt;
 }
 
-// اليوم الحالي هو اليوم الثالث، إذن البداية قبل يومين من اليوم الحالي
-function day3StartStr() {
-  const now = new Date();
-  const dt = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 2, 0, 0, 0, 0);
-  return formatYMD(dt);
-}
-
 function getDayNum() {
   const s = parseYMD(S.start);
+  if (!s) return 1;
   const now = new Date();
   const t = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-  if (!s) return 3;
   const diff = Math.floor((t.getTime() - s.getTime()) / 86400000) + 1;
   return Math.max(1, Math.min(90, diff));
 }
@@ -117,76 +114,130 @@ function showToast(msg) {
   }, 2500);
 }
 
-function saveLocal() {
-  try {
-    localStorage.setItem("challenge90_state_v4", JSON.stringify(S));
-  } catch (e) {
-    console.warn("LocalStorage warning:", e);
+function normalizeDayStories(val) {
+  if (!val) return [];
+  if (Array.isArray(val)) {
+    return val.filter((item) => item && typeof item === "object" && (item.img || item.note));
   }
+  if (typeof val === "object" && (val.img || val.note)) {
+    return [val];
+  }
+  return [];
 }
 
-async function saveCloud() {
-  saveLocal();
-  if (!docRef || !syncReady) return;
-  try {
-    await docRef.set(JSON.parse(JSON.stringify(S)), { merge: true });
-  } catch (e) {
-    console.warn("Firestore save warning:", e);
-  }
-}
-
-function normalizeStories(raw) {
+function normalizeStoriesMap(raw) {
   const res = {};
   if (!raw || typeof raw !== "object") return res;
-  for (const k of Object.keys(raw)) {
-    const v = raw[k];
-    if (Array.isArray(v)) {
-      res[k] = v;
-    } else if (v && typeof v === "object") {
-      res[k] = [v];
+  for (const key of Object.keys(raw)) {
+    const arr = normalizeDayStories(raw[key]);
+    if (arr.length > 0) {
+      res[key] = arr;
     }
   }
   return res;
 }
 
-function hasAnyProgressData(d) {
-  if (!d || typeof d !== "object") return false;
-  const hasStories = d.stories && Object.keys(d.stories).length > 0;
-  const hasDayTasks = d.dayTasks && Object.keys(d.dayTasks).length > 0;
-  const hasDayStatus = d.dayStatus && Object.keys(d.dayStatus).length > 0;
-  const hasBa = Array.isArray(d.ba) && d.ba.length > 0;
-  return Boolean(hasStories || hasDayTasks || hasDayStatus || hasBa);
+function mergeStoryArrays(a, b) {
+  const listA = normalizeDayStories(a);
+  const listB = normalizeDayStories(b);
+  const seen = new Set();
+  const merged = [];
+
+  for (const item of [...listA, ...listB]) {
+    const sig = item.id || `${item.date || ""}_${(item.note || "").slice(0, 20)}_${(item.img || "").slice(-24)}`;
+    if (!seen.has(sig)) {
+      seen.add(sig);
+      merged.push(item);
+    }
+  }
+  return merged;
 }
 
-function hydrateState(data) {
-  const d = data && typeof data === "object" ? data : {};
+function mergeStates(primary, secondary) {
+  const p = primary && typeof primary === "object" ? primary : {};
+  const s = secondary && typeof secondary === "object" ? secondary : {};
 
-  // إذا كان هناك تاريخ بداية محفوظ مسبقاً نستخدمه، وإلا نضبطه ليكون اليوم الحالي هو اليوم الثالث
-  if (d.start && parseYMD(d.start)) {
-    S.start = d.start;
-  } else if (!S.start) {
-    S.start = day3StartStr();
+  // نفضل تاريخ البداية الأقدم إذا كان كلاهما صالحاً حتى لا يتقدم اليوم للخلف
+  let chosenStart = p.start || s.start || todayStr();
+  const dp = parseYMD(p.start);
+  const ds = parseYMD(s.start);
+  if (dp && ds) {
+    chosenStart = dp.getTime() <= ds.getTime() ? p.start : s.start;
   }
 
-  S.tasks =
-    Array.isArray(d.tasks) && d.tasks.length > 0
-      ? d.tasks
+  const tasks =
+    Array.isArray(p.tasks) && p.tasks.length > 0
+      ? p.tasks
+      : Array.isArray(s.tasks) && s.tasks.length > 0
+      ? s.tasks
       : DEFAULT_TASKS.map((t) => ({ id: t.id, n: t.n, e: t.e, days: [...t.days] }));
-  S.dayStatus = d.dayStatus && typeof d.dayStatus === "object" ? d.dayStatus : {};
-  S.dayTasks = d.dayTasks && typeof d.dayTasks === "object" ? d.dayTasks : {};
-  S.stories = normalizeStories(d.stories);
-  S.rewards = Array.isArray(d.rewards) ? d.rewards : [];
-  S.weekRewards = d.weekRewards && typeof d.weekRewards === "object" ? d.weekRewards : {};
-  S.ba = Array.isArray(d.ba) ? d.ba : [];
 
-  // إذا كانت هناك بيانات سابقة محفوظة وكان start يعطي يوماً أقل من 3، نضبط start ليكون اليوم 3 مع الحفاظ على كل البيانات
-  const currentCalcDay = getDayNum();
-  if (!d.start && hasAnyProgressData(d) && currentCalcDay < 3) {
-    S.start = day3StartStr();
+  const dayTasks = { ...(s.dayTasks || {}), ...(p.dayTasks || {}) };
+  const dayStatus = { ...(s.dayStatus || {}), ...(p.dayStatus || {}) };
+
+  const allStoryDays = new Set([
+    ...Object.keys(normalizeStoriesMap(s.stories)),
+    ...Object.keys(normalizeStoriesMap(p.stories))
+  ]);
+  const stories = {};
+  for (const dayKey of allStoryDays) {
+    const m = mergeStoryArrays(s.stories && s.stories[dayKey], p.stories && p.stories[dayKey]);
+    if (m.length > 0) {
+      stories[dayKey] = m;
+    }
+  }
+
+  const rewards = Array.from(new Set([...(Array.isArray(s.rewards) ? s.rewards : []), ...(Array.isArray(p.rewards) ? p.rewards : [])]));
+  const weekRewards = { ...(s.weekRewards || {}), ...(p.weekRewards || {}) };
+
+  const baA = Array.isArray(s.ba) ? s.ba : [];
+  const baB = Array.isArray(p.ba) ? p.ba : [];
+  const baSeen = new Set();
+  const ba = [];
+  for (const item of [...baA, ...baB]) {
+    if (!item || !item.img) continue;
+    const sig = `${item.day || ""}_${item.date || ""}_${item.img.slice(-24)}`;
+    if (!baSeen.has(sig)) {
+      baSeen.add(sig);
+      ba.push(item);
+    }
+  }
+
+  return {
+    start: chosenStart,
+    tasks,
+    dayTasks,
+    dayStatus,
+    stories,
+    rewards,
+    weekRewards,
+    ba
+  };
+}
+
+function saveLocal() {
+  try {
+    const serialized = JSON.stringify(S);
+    for (const k of STORAGE_KEYS) {
+      localStorage.setItem(k, serialized);
+    }
+  } catch (e) {
+    console.warn("LocalStorage save error:", e);
   }
 }
 
-function compressImg(file, maxW = 700, quality = 0.65) {
+async function saveCloud() {
+  saveLocal();
+  if (!docRef || !cloudSyncFinished) return;
+  try {
+    await docRef.set(JSON.parse(JSON.stringify(S)), { merge: true });
+  } catch (e) {
+    console.warn("Firestore save error:", e);
+    showToast("⚠️ تعذر حفظ بعض البيانات في السحابة");
+  }
+}
+
+function compressImg(file, maxW = 550, quality = 0.55) {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = (ev) => {
@@ -231,7 +282,7 @@ function render() {
   const storiesEl = $("stories");
   if (storiesEl) {
     storiesEl.innerHTML = "";
-    const list = S.stories[dn] || [];
+    const list = normalizeDayStories(S.stories[dn]);
     list.forEach((st, idx) => {
       const btn = document.createElement("button");
       btn.type = "button";
@@ -250,7 +301,7 @@ function render() {
   }
 
   const dow = getDayOfWeek(dn);
-  const baseTasks = S.dayTasks[dn] || S.tasks;
+  const baseTasks = Array.isArray(S.dayTasks[dn]) ? S.dayTasks[dn] : S.tasks;
   const activeTasks = baseTasks.filter((t) => !Array.isArray(t.days) || t.days.includes(dow));
   const statusMap = S.dayStatus[dn] || {};
 
@@ -416,7 +467,7 @@ function renderRewardsModalList() {
 function viewExistingStory(day, index) {
   curStoryDay = day;
   activeStoryIndex = index;
-  const list = S.stories[day] || [];
+  const list = normalizeDayStories(S.stories[day]);
   const st = list[index];
   if (!st) return;
 
@@ -463,7 +514,7 @@ function openArchiveDayDetail(day) {
   const ddStoriesEl = $("ddStories");
   if (ddStoriesEl) {
     ddStoriesEl.innerHTML = "";
-    const list = S.stories[day] || [];
+    const list = normalizeDayStories(S.stories[day]);
     list.forEach((st, idx) => {
       const btn = document.createElement("button");
       btn.type = "button";
@@ -653,9 +704,10 @@ function renderArchive(dn) {
   if (wdaysEl) {
     wdaysEl.innerHTML = "";
     for (let d = startD; d <= endD; d++) {
-      const hasStories = Array.isArray(S.stories[d]) && S.stories[d].length > 0;
+      const dayStoriesList = normalizeDayStories(S.stories[d]);
+      const hasStories = dayStoriesList.length > 0;
       const hasRecord = Array.isArray(S.dayTasks[d]);
-      const count = hasStories ? S.stories[d].length : 0;
+      const count = dayStoriesList.length;
 
       let summary = "فارغ";
       if (hasRecord) {
@@ -683,6 +735,7 @@ function renderArchive(dn) {
   if (baEl) {
     baEl.innerHTML = "";
     S.ba.forEach((item, idx) => {
+      if (!item || !item.img) return;
       const fig = document.createElement("figure");
       fig.innerHTML = `<img src="${item.img}" alt="تطور" />`;
       const cap = document.createElement("figcaption");
@@ -786,8 +839,9 @@ function bindUI() {
       const note = $("svN") ? $("svN").value.trim() : "";
       if (!tempImg && !note) return showToast("أضف صورة أو ملاحظة أولاً");
 
-      if (!S.stories[curStoryDay]) S.stories[curStoryDay] = [];
-      S.stories[curStoryDay].push({ id: "st_" + Date.now(), img: tempImg, note, date: todayStr() });
+      const currentArr = normalizeDayStories(S.stories[curStoryDay]);
+      currentArr.push({ id: "st_" + Date.now(), img: tempImg, note, date: todayStr() });
+      S.stories[curStoryDay] = currentArr;
       tempImg = "";
 
       if ($("sv")) $("sv").classList.remove("s");
@@ -805,12 +859,14 @@ function bindUI() {
       if (activeStoryIndex === null || activeStoryIndex === undefined) return;
       if (!confirm("هل تريد حذف هذا الستوري نهائياً؟")) return;
 
-      if (S.stories[curStoryDay]) {
-        S.stories[curStoryDay].splice(activeStoryIndex, 1);
-        if (!S.stories[curStoryDay].length) {
-          delete S.stories[curStoryDay];
-        }
+      const currentArr = normalizeDayStories(S.stories[curStoryDay]);
+      currentArr.splice(activeStoryIndex, 1);
+      if (!currentArr.length) {
+        delete S.stories[curStoryDay];
+      } else {
+        S.stories[curStoryDay] = currentArr;
       }
+
       if ($("sv")) $("sv").classList.remove("s");
       render();
       if ($("dayDetailModal") && $("dayDetailModal").classList.contains("s")) {
@@ -825,7 +881,7 @@ function bindUI() {
     $("fiBa").addEventListener("change", async (e) => {
       const file = e.target.files && e.target.files[0];
       if (!file) return;
-      const img = await compressImg(file, 650, 0.65);
+      const img = await compressImg(file, 550, 0.55);
       if (!img) return showToast("تعذر قراءة الصورة");
       S.ba.push({ day: getDayNum(), img, date: todayStr() });
       render();
@@ -854,54 +910,49 @@ function bindUI() {
   }
 }
 
+function readAllLocalStates() {
+  let combined = null;
+  for (const key of STORAGE_KEYS) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        combined = combined ? mergeStates(combined, parsed) : parsed;
+      }
+    } catch (_) {}
+  }
+  return combined;
+}
+
 async function startApp() {
   bindUI();
 
-  let localData = null;
-  try {
-    const raw =
-      localStorage.getItem("challenge90_state_v4") ||
-      localStorage.getItem("challenge90_state_v3") ||
-      localStorage.getItem("challenge90_state_v2");
-    if (raw) {
-      localData = JSON.parse(raw);
-      hydrateState(localData);
-    } else {
-      hydrateState({ start: day3StartStr() });
-    }
-  } catch (_) {
-    hydrateState({ start: day3StartStr() });
-  }
-
+  const localMerged = readAllLocalStates();
+  S = mergeStates(localMerged, { start: todayStr() });
   render();
 
   if (!docRef) {
-    syncReady = true;
+    cloudSyncFinished = true;
     await saveCloud();
     return;
   }
 
   try {
     const snap = await docRef.get();
-    syncReady = true;
-    if (snap && snap.exists) {
-      const cloudData = snap.data() || {};
-      const merged = {
-        ...localData,
-        ...cloudData,
-        start: cloudData.start || (localData && localData.start) || day3StartStr()
-      };
-      hydrateState(merged);
+    cloudSyncFinished = true;
+    const cloudData = snap && snap.exists ? snap.data() || {} : null;
+
+    if (cloudData) {
+      // ندمج السحابة مع المحلي بدون فقدان أي ستوري أو صورة من أي منهما
+      S = mergeStates(cloudData, localMerged);
       render();
-      if (!cloudData.start && S.start) {
-        await saveCloud();
-      }
+      saveLocal();
     } else {
       await saveCloud();
     }
   } catch (e) {
-    syncReady = true;
-    console.warn("Initial cloud sync notice:", e);
+    cloudSyncFinished = true;
+    console.warn("Cloud sync error:", e);
   }
 }
 
