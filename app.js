@@ -49,7 +49,7 @@ let S = {
 
 let editId = null;
 let selEmoji = EMOJIS[0];
-let curStoryDay = 1;
+let curStoryDay = 3;
 let activeStoryIndex = null;
 let tempImg = "";
 let selWeek = 1;
@@ -60,7 +60,7 @@ function $(id) {
   return document.getElementById(id);
 }
 
-function formatDateYMD(dateObj) {
+function formatYMD(dateObj) {
   const y = dateObj.getFullYear();
   const m = String(dateObj.getMonth() + 1).padStart(2, "0");
   const d = String(dateObj.getDate()).padStart(2, "0");
@@ -68,7 +68,7 @@ function formatDateYMD(dateObj) {
 }
 
 function todayStr() {
-  return formatDateYMD(new Date());
+  return formatYMD(new Date());
 }
 
 function parseYMD(str) {
@@ -83,18 +83,11 @@ function parseYMD(str) {
   return isNaN(dt.getTime()) ? null : dt;
 }
 
-// حساب تاريخ البداية بحيث يكون اليوم الحالي هو اليوم الثالث افتراضياً عند أول تأسيس جديد
-function computeDefaultDay3Start() {
+// اليوم الحالي هو اليوم الثالث، إذن البداية قبل يومين من اليوم الحالي
+function day3StartStr() {
   const now = new Date();
-  const startDt = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 2, 0, 0, 0, 0);
-  return formatDateYMD(startDt);
-}
-
-function setCurrentDayNumber(targetDay) {
-  const num = Math.max(1, Math.min(90, Number(targetDay) || 1));
-  const now = new Date();
-  const startDt = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (num - 1), 0, 0, 0, 0);
-  S.start = formatDateYMD(startDt);
+  const dt = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 2, 0, 0, 0, 0);
+  return formatYMD(dt);
 }
 
 function getDayNum() {
@@ -126,7 +119,7 @@ function showToast(msg) {
 
 function saveLocal() {
   try {
-    localStorage.setItem("challenge90_state_v3", JSON.stringify(S));
+    localStorage.setItem("challenge90_state_v4", JSON.stringify(S));
   } catch (e) {
     console.warn("LocalStorage warning:", e);
   }
@@ -156,18 +149,25 @@ function normalizeStories(raw) {
   return res;
 }
 
-function pickEarliestDateStr(a, b) {
-  const da = parseYMD(a);
-  const dbDt = parseYMD(b);
-  if (da && dbDt) {
-    return da.getTime() <= dbDt.getTime() ? a : b;
-  }
-  return a || b || computeDefaultDay3Start();
+function hasAnyProgressData(d) {
+  if (!d || typeof d !== "object") return false;
+  const hasStories = d.stories && Object.keys(d.stories).length > 0;
+  const hasDayTasks = d.dayTasks && Object.keys(d.dayTasks).length > 0;
+  const hasDayStatus = d.dayStatus && Object.keys(d.dayStatus).length > 0;
+  const hasBa = Array.isArray(d.ba) && d.ba.length > 0;
+  return Boolean(hasStories || hasDayTasks || hasDayStatus || hasBa);
 }
 
-function hydrateState(data, fallbackStart = null) {
+function hydrateState(data) {
   const d = data && typeof data === "object" ? data : {};
-  S.start = pickEarliestDateStr(d.start, fallbackStart || S.start || computeDefaultDay3Start());
+
+  // إذا كان هناك تاريخ بداية محفوظ مسبقاً نستخدمه، وإلا نضبطه ليكون اليوم الحالي هو اليوم الثالث
+  if (d.start && parseYMD(d.start)) {
+    S.start = d.start;
+  } else if (!S.start) {
+    S.start = day3StartStr();
+  }
+
   S.tasks =
     Array.isArray(d.tasks) && d.tasks.length > 0
       ? d.tasks
@@ -178,6 +178,12 @@ function hydrateState(data, fallbackStart = null) {
   S.rewards = Array.isArray(d.rewards) ? d.rewards : [];
   S.weekRewards = d.weekRewards && typeof d.weekRewards === "object" ? d.weekRewards : {};
   S.ba = Array.isArray(d.ba) ? d.ba : [];
+
+  // إذا كانت هناك بيانات سابقة محفوظة وكان start يعطي يوماً أقل من 3، نضبط start ليكون اليوم 3 مع الحفاظ على كل البيانات
+  const currentCalcDay = getDayNum();
+  if (!d.start && hasAnyProgressData(d) && currentCalcDay < 3) {
+    S.start = day3StartStr();
+  }
 }
 
 function compressImg(file, maxW = 700, quality = 0.65) {
@@ -210,7 +216,6 @@ function compressImg(file, maxW = 700, quality = 0.65) {
 function render() {
   const dn = getDayNum();
   if ($("dn")) $("dn").textContent = dn;
-  if ($("startDateLabel")) $("startDateLabel").textContent = `${S.start} (اليوم ${dn})`;
 
   if ($("ring")) {
     $("ring").style.setProperty("--p", Math.round((dn / 90) * 100));
@@ -699,36 +704,6 @@ function renderArchive(dn) {
 }
 
 function bindUI() {
-  if ($("editStartDateBtn")) {
-    $("editStartDateBtn").addEventListener("click", async () => {
-      const curDay = getDayNum();
-      const input = prompt("أدخل رقم اليوم الحالي (من 1 إلى 90) أو تاريخ البداية (YYYY-MM-DD):", String(curDay));
-      if (!input) return;
-      const trimmed = input.trim();
-
-      if (/^\d+$/.test(trimmed)) {
-        const dayNum = Number(trimmed);
-        if (dayNum < 1 || dayNum > 90) {
-          return showToast("أدخل رقماً بين 1 و 90");
-        }
-        setCurrentDayNumber(dayNum);
-        render();
-        await saveCloud();
-        showToast(`✅ تم ضبط التحدي على اليوم ${dayNum}`);
-        return;
-      }
-
-      const parsed = parseYMD(trimmed);
-      if (!parsed) {
-        return showToast("صيغة غير صحيحة، اكتب رقم اليوم مثل 3 أو تاريخ YYYY-MM-DD");
-      }
-      S.start = trimmed;
-      render();
-      await saveCloud();
-      showToast("✅ تم تحديث تاريخ البداية");
-    });
-  }
-
   if ($("addBtn")) $("addBtn").addEventListener("click", () => openTaskModal());
   if ($("tmC")) $("tmC").addEventListener("click", () => $("tm").classList.remove("s"));
 
@@ -884,15 +859,18 @@ async function startApp() {
 
   let localData = null;
   try {
-    const raw = localStorage.getItem("challenge90_state_v3") || localStorage.getItem("challenge90_state_v2");
+    const raw =
+      localStorage.getItem("challenge90_state_v4") ||
+      localStorage.getItem("challenge90_state_v3") ||
+      localStorage.getItem("challenge90_state_v2");
     if (raw) {
       localData = JSON.parse(raw);
       hydrateState(localData);
     } else {
-      hydrateState({}, computeDefaultDay3Start());
+      hydrateState({ start: day3StartStr() });
     }
   } catch (_) {
-    hydrateState({}, computeDefaultDay3Start());
+    hydrateState({ start: day3StartStr() });
   }
 
   render();
@@ -908,8 +886,12 @@ async function startApp() {
     syncReady = true;
     if (snap && snap.exists) {
       const cloudData = snap.data() || {};
-      const bestStart = pickEarliestDateStr(cloudData.start, localData && localData.start);
-      hydrateState({ ...cloudData, start: bestStart }, bestStart);
+      const merged = {
+        ...localData,
+        ...cloudData,
+        start: cloudData.start || (localData && localData.start) || day3StartStr()
+      };
+      hydrateState(merged);
       render();
       if (!cloudData.start && S.start) {
         await saveCloud();
