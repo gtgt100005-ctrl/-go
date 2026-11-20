@@ -54,24 +54,24 @@ let activeStoryIndex = null;
 let tempImg = "";
 let selWeek = 1;
 let tempWeekSuggestion = {};
-let isInitialSyncDone = false;
+let syncReady = false;
 
 function $(id) {
   return document.getElementById(id);
 }
 
-function todayStr() {
-  const d = new Date();
-  return (
-    d.getFullYear() +
-    "-" +
-    String(d.getMonth() + 1).padStart(2, "0") +
-    "-" +
-    String(d.getDate()).padStart(2, "0")
-  );
+function formatDateYMD(dateObj) {
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2, "0");
+  const d = String(dateObj.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
-function parseDateOnly(str) {
+function todayStr() {
+  return formatDateYMD(new Date());
+}
+
+function parseYMD(str) {
   if (!str || typeof str !== "string") return null;
   const parts = str.trim().split("-");
   if (parts.length !== 3) return null;
@@ -83,20 +83,34 @@ function parseDateOnly(str) {
   return isNaN(dt.getTime()) ? null : dt;
 }
 
+// حساب تاريخ البداية بحيث يكون اليوم الحالي هو اليوم الثالث افتراضياً عند أول تأسيس جديد
+function computeDefaultDay3Start() {
+  const now = new Date();
+  const startDt = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 2, 0, 0, 0, 0);
+  return formatDateYMD(startDt);
+}
+
+function setCurrentDayNumber(targetDay) {
+  const num = Math.max(1, Math.min(90, Number(targetDay) || 1));
+  const now = new Date();
+  const startDt = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (num - 1), 0, 0, 0, 0);
+  S.start = formatDateYMD(startDt);
+}
+
 function getDayNum() {
-  const s = parseDateOnly(S.start);
+  const s = parseYMD(S.start);
   const now = new Date();
   const t = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-  if (!s) return 1;
-  const diffDays = Math.floor((t.getTime() - s.getTime()) / 86400000) + 1;
-  return Math.max(1, Math.min(90, diffDays));
+  if (!s) return 3;
+  const diff = Math.floor((t.getTime() - s.getTime()) / 86400000) + 1;
+  return Math.max(1, Math.min(90, diff));
 }
 
 function getDayOfWeek(dayNum) {
-  const s = parseDateOnly(S.start);
+  const s = parseYMD(S.start);
   if (!s) return new Date().getDay();
-  const target = new Date(s.getFullYear(), s.getMonth(), s.getDate() + (dayNum - 1));
-  return target.getDay();
+  const dt = new Date(s.getFullYear(), s.getMonth(), s.getDate() + (dayNum - 1), 0, 0, 0, 0);
+  return dt.getDay();
 }
 
 function showToast(msg) {
@@ -112,7 +126,7 @@ function showToast(msg) {
 
 function saveLocal() {
   try {
-    localStorage.setItem("challenge90_state_v2", JSON.stringify(S));
+    localStorage.setItem("challenge90_state_v3", JSON.stringify(S));
   } catch (e) {
     console.warn("LocalStorage warning:", e);
   }
@@ -120,7 +134,7 @@ function saveLocal() {
 
 async function saveCloud() {
   saveLocal();
-  if (!docRef || !isInitialSyncDone) return;
+  if (!docRef || !syncReady) return;
   try {
     await docRef.set(JSON.parse(JSON.stringify(S)), { merge: true });
   } catch (e) {
@@ -142,23 +156,18 @@ function normalizeStories(raw) {
   return res;
 }
 
-function pickEarliestStart(a, b) {
-  const da = parseDateOnly(a);
-  const dbDate = parseDateOnly(b);
-  if (da && dbDate) {
-    return da.getTime() <= dbDate.getTime() ? a : b;
+function pickEarliestDateStr(a, b) {
+  const da = parseYMD(a);
+  const dbDt = parseYMD(b);
+  if (da && dbDt) {
+    return da.getTime() <= dbDt.getTime() ? a : b;
   }
-  return a || b || todayStr();
+  return a || b || computeDefaultDay3Start();
 }
 
-function loadStateObject(data, fallbackStart = null) {
+function hydrateState(data, fallbackStart = null) {
   const d = data && typeof data === "object" ? data : {};
-  const candidateStart = d.start || fallbackStart || S.start || todayStr();
-  S.start = pickEarliestStart(candidateStart, d.start);
-  if (d.start) {
-    S.start = d.start;
-  }
-
+  S.start = pickEarliestDateStr(d.start, fallbackStart || S.start || computeDefaultDay3Start());
   S.tasks =
     Array.isArray(d.tasks) && d.tasks.length > 0
       ? d.tasks
@@ -201,7 +210,7 @@ function compressImg(file, maxW = 700, quality = 0.65) {
 function render() {
   const dn = getDayNum();
   if ($("dn")) $("dn").textContent = dn;
-  if ($("startDateLabel")) $("startDateLabel").textContent = S.start || todayStr();
+  if ($("startDateLabel")) $("startDateLabel").textContent = `${S.start} (اليوم ${dn})`;
 
   if ($("ring")) {
     $("ring").style.setProperty("--p", Math.round((dn / 90) * 100));
@@ -214,7 +223,6 @@ function render() {
     S.dayStatus[dn] = {};
   }
 
-  // شريط الستوريات لليوم الحالي
   const storiesEl = $("stories");
   if (storiesEl) {
     storiesEl.innerHTML = "";
@@ -236,7 +244,6 @@ function render() {
     storiesEl.appendChild(addBtn);
   }
 
-  // مهام اليوم الحالي
   const dow = getDayOfWeek(dn);
   const baseTasks = S.dayTasks[dn] || S.tasks;
   const activeTasks = baseTasks.filter((t) => !Array.isArray(t.days) || t.days.includes(dow));
@@ -694,16 +701,31 @@ function renderArchive(dn) {
 function bindUI() {
   if ($("editStartDateBtn")) {
     $("editStartDateBtn").addEventListener("click", async () => {
-      const input = prompt("أدخل تاريخ بداية التحدي بصيغة YYYY-MM-DD (مثال: 2026-11-01):", S.start || todayStr());
+      const curDay = getDayNum();
+      const input = prompt("أدخل رقم اليوم الحالي (من 1 إلى 90) أو تاريخ البداية (YYYY-MM-DD):", String(curDay));
       if (!input) return;
-      const parsed = parseDateOnly(input.trim());
-      if (!parsed) {
-        return showToast("صيغة التاريخ غير صحيحة، استخدم YYYY-MM-DD");
+      const trimmed = input.trim();
+
+      if (/^\d+$/.test(trimmed)) {
+        const dayNum = Number(trimmed);
+        if (dayNum < 1 || dayNum > 90) {
+          return showToast("أدخل رقماً بين 1 و 90");
+        }
+        setCurrentDayNumber(dayNum);
+        render();
+        await saveCloud();
+        showToast(`✅ تم ضبط التحدي على اليوم ${dayNum}`);
+        return;
       }
-      S.start = input.trim();
+
+      const parsed = parseYMD(trimmed);
+      if (!parsed) {
+        return showToast("صيغة غير صحيحة، اكتب رقم اليوم مثل 3 أو تاريخ YYYY-MM-DD");
+      }
+      S.start = trimmed;
       render();
       await saveCloud();
-      showToast("✅ تم تحديث تاريخ بداية التحدي");
+      showToast("✅ تم تحديث تاريخ البداية");
     });
   }
 
@@ -862,31 +884,32 @@ async function startApp() {
 
   let localData = null;
   try {
-    const raw = localStorage.getItem("challenge90_state_v2");
+    const raw = localStorage.getItem("challenge90_state_v3") || localStorage.getItem("challenge90_state_v2");
     if (raw) {
       localData = JSON.parse(raw);
-      loadStateObject(localData);
+      hydrateState(localData);
     } else {
-      loadStateObject({});
+      hydrateState({}, computeDefaultDay3Start());
     }
   } catch (_) {
-    loadStateObject({});
+    hydrateState({}, computeDefaultDay3Start());
   }
 
   render();
 
   if (!docRef) {
-    isInitialSyncDone = true;
+    syncReady = true;
+    await saveCloud();
     return;
   }
 
   try {
     const snap = await docRef.get();
-    isInitialSyncDone = true;
+    syncReady = true;
     if (snap && snap.exists) {
       const cloudData = snap.data() || {};
-      const mergedStart = pickEarliestStart(cloudData.start, localData && localData.start);
-      loadStateObject({ ...cloudData, start: mergedStart }, mergedStart);
+      const bestStart = pickEarliestDateStr(cloudData.start, localData && localData.start);
+      hydrateState({ ...cloudData, start: bestStart }, bestStart);
       render();
       if (!cloudData.start && S.start) {
         await saveCloud();
@@ -895,7 +918,7 @@ async function startApp() {
       await saveCloud();
     }
   } catch (e) {
-    isInitialSyncDone = true;
+    syncReady = true;
     console.warn("Initial cloud sync notice:", e);
   }
 }
