@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>اليوم العالمي للـ GIS — العرض المتكامل</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#04080f;--sky:#38bdf8;--em:#10d9a0;--am:#fbbf24;--ink:#eaf1ff;--mu:#9fb2d2;--e:cubic-bezier(.22,1,.36,1);color-scheme:dark}
+*{box-sizing:border-box;margin:0;user-select:none;-webkit-user-select:none}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--ink);cursor:pointer;font-family:Cairo,Tajawal,"Segoe UI",Tahoma,sans-serif}
+.bg{position:fixed;inset:0;background:radial-gradient(950px 650px at 85% 0,#0b2a52,transparent 65%),radial-gradient(950px 650px at 5% 100%,#06302c,transparent 60%)}
+.bg svg{position:absolute;inset:-10%;width:120%;height:120%;fill:none;stroke:var(--sky);stroke-opacity:.15;animation:dr 90s ease-in-out infinite alternate;transform:translate(calc(var(--mx,0)*-2vw),calc(var(--my,0)*-2vh))}
+.bg:after{content:"";position:absolute;inset:0;background:radial-gradient(ellipse,transparent 45%,#02050a 100%)}
+@keyframes dr{to{rotate:6deg;scale:1.1}}
+
+#pg{position:fixed;top:0;right:0;left:0;height:4px;z-index:20;background:linear-gradient(270deg,var(--sky),var(--em),var(--am));transform-origin:right;transform:scaleX(0);transition:transform .8s var(--e)}
+.hud{position:fixed;z-index:20;left:2.4vw;top:1.8vh;direction:ltr;font-size:1.7vh;letter-spacing:.14em;color:var(--mu);font-variant-numeric:tabular-nums;line-height:1.5}
+#cnt{position:fixed;z-index:20;right:2.4vw;top:1.8vh;font-weight:900;font-size:2.3vh;color:var(--mu);direction:ltr}
+
+/* الشريحة المدمجة: يمين للنص المنظم ويسار للأنيميشن التفاعلي */
+.sc{position:fixed;inset:0;display:grid;grid-template-columns:1.08fr .92fr;align-items:center;gap:3vw;padding:6.5vh 4.5vw 13vh;opacity:0;visibility:hidden;transform:translateY(20px) scale(.98);--c:var(--sky);transition:opacity .75s var(--e),transform .9s var(--e),visibility 0s .9s,padding-bottom .6s var(--e)}
+.sc.on{opacity:1;visibility:visible;transform:none;transition:opacity .75s var(--e) .15s,transform .9s var(--e) .15s,visibility 0s,padding-bottom .6s var(--e)}
+.sc.past{transform:translateY(-20px) scale(.98)}
+.sc.fx{padding-bottom:22vh}
+.s2,.s5,.s8{--c:var(--em)}.s3,.s6{--c:var(--am)}
+
+.wm{position:fixed;left:3vw;bottom:9vh;font-size:24vh;font-weight:900;color:var(--c);opacity:.05;line-height:1;direction:ltr;pointer-events:none}
+
+/* العمود الأيمن: المحتوى والنقاط */
+.txt{display:flex;flex-direction:column;justify-content:center;text-align:right;z-index:2}
+.tag{display:inline-block;width:fit-content;font-size:2vh;font-weight:700;color:var(--c);border:1px solid color-mix(in srgb,var(--c) 55%,transparent);background:#0d1a3399;padding:.2em 1em;border-radius:99px;margin-bottom:1.2vh}
+.ttl{font-size:5.6vh;font-weight:900;line-height:1.2;color:var(--c);padding-bottom:1.1vh;margin-bottom:1.4vh;border-bottom:3px solid var(--c);width:fit-content;max-width:100%}
+.gr{background:linear-gradient(100deg,var(--em),var(--sky) 55%,var(--am));-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{font-size:2.7vh;color:var(--mu);font-weight:700;margin-bottom:2vh}
+
+.pts{list-style:none;display:flex;flex-direction:column;gap:1.5vh}
+.pts li{font-size:2.6vh;line-height:1.55;padding-right:1.6em;position:relative;color:var(--ink)}
+.pts li:before{content:"";position:absolute;right:0;top:.62em;width:.55em;height:.55em;border-radius:50%;background:var(--c);box-shadow:0 0 10px var(--c)}
+.pts li b{color:var(--c)}
+
+.cards{display:grid;grid-template-columns:1fr;gap:1.3vh}
+.cd{background:#0d1a33cc;border:1px solid #2a3f6b;border-right:5px solid var(--c);border-radius:1.4vh;padding:1.3vh 1.4vw}
+.cd:nth-child(2){--c:var(--em)}.cd:nth-child(3){--c:var(--am)}
+.cd h3{font-size:2.7vh;font-weight:900;color:var(--c);margin-bottom:.3vh}
+.cd p{font-size:2.25vh;line-height:1.5;color:var(--ink);opacity:.92}
+
+/* العمود الأيسر: المسرح البصري والأنيميشن */
+.vis{position:relative;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:2}
+.card{width:100%;height:42vh;max-height:420px;border:2px solid var(--c);border-radius:2.2vh;position:relative;overflow:hidden;background:linear-gradient(160deg,#0f2447cc,#050c1acc);box-shadow:0 0 5vh color-mix(in srgb,var(--c) 22%,transparent)}
+.card svg{position:absolute;inset:0;width:100%;height:100%}
+.cap{margin-top:1.4vh;font-size:2.4vh;font-weight:700;color:var(--am);text-align:center}
+
+/* حركة الظهور التدريجي لكل عنصر */
+.rv{opacity:0;transform:translateY(2.2vh) scale(.97);transition:opacity .65s var(--e) var(--d,0s),transform .8s var(--e) var(--d,0s)}
+.rv.in{opacity:1;transform:none}
+svg .rv{transform-box:fill-box;transform-origin:center}
+
+/* S1: الكرة الأرضية */
+.gwrap{position:relative;width:44vh;height:44vh;display:grid;place-items:center}
+#gl{width:100%;height:100%}
+.gwhere{position:absolute;font-size:11vh;font-weight:900;pointer-events:none;text-shadow:0 6px 30px #04080f}
+
+/* S2: المعادلة والخريطة */
+.eq{display:flex;gap:1vw;font-size:3.4vh;font-weight:900;margin-bottom:1.2vh}
+.eq span:nth-child(1){color:var(--sky)}.eq span:nth-child(2){color:var(--em)}.eq span:nth-child(3){color:var(--am)}
+.pt{fill:var(--em)}.heat{fill:url(#hg)}.pv{fill:var(--ink);font:700 18px Cairo,sans-serif;text-anchor:middle}
+
+/* S3: 1999 */
+.yw{position:relative;width:42vh;height:42vh;display:grid;place-items:center}
+.yr{font-size:15vh;font-weight:900;color:var(--am);line-height:1;direction:ltr;text-shadow:0 0 5vh #fbbf2466;font-variant-numeric:tabular-nums}
+.ring{position:absolute;inset:0;width:100%;height:100%}
+.ring circle{fill:#22345c}.in.ring circle,.in .ring circle{animation:lit .5s var(--dl) forwards}
+@keyframes lit{to{fill:var(--am);filter:drop-shadow(0 0 6px var(--am))}}
+
+/* S4: خريطة صامتة أم حية */
+.sil .rd{stroke:#2a3f6b}.bk{fill:#122240}.lv .rd{stroke:#1f6b8f}.lv .bk{fill:#0f4251}.rd{stroke-width:9;fill:none}
+.lv{clip-path:inset(0 0 0 100%);transition:clip-path 1.8s var(--e) .15s}
+.s4[data-step="1"] .lv,.s4[data-step="2"] .lv,.s4[data-step="3"] .lv{clip-path:inset(0)}
+.sweep{position:absolute;top:0;bottom:0;left:100%;width:3px;background:var(--em);box-shadow:0 0 18px var(--em);transition:left 1.8s var(--e) .15s,opacity .5s 1.9s}
+.s4[data-step="1"] .sweep,.s4[data-step="2"] .sweep,.s4[data-step="3"] .sweep{left:0;opacity:0}
+.car{fill:var(--am);filter:drop-shadow(0 0 6px var(--am));animation:dv 5s linear infinite}.car.v{animation-name:dw}
+@keyframes dv{from{transform:translateX(-120px)}to{transform:translateX(900px)}}
+@keyframes dw{from{transform:translateY(-60px)}to{transform:translateY(500px)}}
+.bd{position:absolute;top:1.4vh;right:1.4vw;padding:.2em .9em;border-radius:99px;font-weight:900;font-size:2.2vh;background:#22345c;color:var(--mu);z-index:2}.bd.l{background:var(--em);color:#04101f}
+.pl{animation:pl 1.5s infinite;transform-box:fill-box;transform-origin:center}@keyframes pl{50%{transform:scale(1.7);opacity:.4}}
+
+/* S5: الطبقات الشفافة */
+.stg{perspective:1000px;width:100%;height:38vh;display:grid;place-items:center}
+.lys{--s:.18;position:relative;width:36vh;height:26vh;transform-style:preserve-3d;transform:rotateX(56deg) rotateZ(-28deg)}
+.s5[data-step="2"] .lys,.s5[data-step="3"] .lys{--s:1.15}
+.ly{position:absolute;inset:0;border-radius:1.8vh;border:2px solid;opacity:0;transform:translateZ(calc(var(--z)*var(--s) + 12vh));transition:opacity .8s,transform 1.3s var(--e)}
+.ly.in{opacity:1;transform:translateZ(calc(var(--z)*var(--s)))}
+.l1{--z:-8vh;border-color:var(--em);background:repeating-radial-gradient(circle at 40% 55%,#10d9a033 0 1.4vh,#10d9a00d 1.4vh 3vh)}
+.l2{--z:0vh;border-color:var(--sky);background:linear-gradient(90deg,transparent 47%,#38bdf8cc 47% 52%,transparent 52%),linear-gradient(0deg,transparent 28%,#38bdf8cc 28% 33%,transparent 33% 68%,#38bdf8cc 68% 73%,transparent 73%),#38bdf812}
+.l3{--z:8vh;border-color:var(--am);background:radial-gradient(circle at 25% 30%,var(--am) 0 1vh,transparent 1.1vh),radial-gradient(circle at 70% 40%,var(--am) 0 1vh,transparent 1.1vh),radial-gradient(circle at 50% 75%,var(--am) 0 1vh,transparent 1.1vh),#fbbf2410}
+.lg-row{display:flex;gap:1.5vw;margin-top:1vh;font-size:2.3vh;font-weight:900}
+
+/* S6: جون سنو */
+.cs{fill:#ef4444;opacity:0}.in .cs{animation:pp .4s var(--dl) forwards}@keyframes pp{from{opacity:0;transform:scale(0)}to{opacity:1;transform:none}}
+.cs{transform-box:fill-box;transform-origin:center}
+.cn{position:absolute;top:1.4vh;right:1.4vw;font-size:3vh;font-weight:900;color:#ef4444;z-index:2}
+.dr{stroke-dasharray:1;stroke-dashoffset:1;transition:stroke-dashoffset 1.6s var(--e) .3s}.in .dr{stroke-dashoffset:0}
+
+/* S7: الهاتف والمدار */
+.stagew{position:relative;width:42vh;height:42vh;display:grid;place-items:center}
+.ph{width:19vh;height:38vh;border:3px solid #2a3f6b;border-radius:2.8vh;background:#08122a;overflow:hidden;position:relative;box-shadow:0 0 4vh #38bdf833}
+.ph svg{width:100%;height:100%}
+.route{stroke:var(--em);stroke-width:5;fill:none;stroke-dasharray:7 9;animation:da 1s linear infinite}@keyframes da{to{stroke-dashoffset:-16}}
+.orb{position:absolute;left:50%;top:50%;width:0;height:0;animation:sp 34s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.orb i{position:absolute;left:0;top:0;transform:rotate(var(--a)) translateX(22vh);font-style:normal}
+.orb b{display:block;transform:rotate(calc(var(--a)*-1));animation:sp 34s linear infinite reverse;white-space:nowrap;background:#0d1a33ee;border:1px solid var(--sky);border-radius:99px;padding:.2em .75em;font-size:2vh;margin:-1.6vh 0 0 -4.5vh}
+
+/* S8: التوأم الرقمي */
+.tw{fill:#0f4251;stroke:var(--sky);stroke-width:1.5;transform-box:fill-box;transform-origin:bottom;transform:scaleY(0)}
+.in .tw{animation:ri .9s var(--dl) var(--e) forwards}@keyframes ri{to{transform:none}}
+.scan{fill:none;stroke:var(--em);stroke-width:3;animation:sn 3.2s ease-in-out infinite alternate}@keyframes sn{from{transform:translateX(-380px)}to{transform:translateX(380px)}}
+.dt{position:absolute;background:#0d1a33ee;border:1px solid var(--em);color:var(--em);border-radius:99px;padding:.18em .8em;font-weight:700;font-size:2.1vh;z-index:2}
+
+/* بطاقات الحقائق السفلية */
+.facts{position:fixed;left:4.5vw;right:4.5vw;bottom:7.8vh;display:flex;gap:1.4vw;justify-content:center;z-index:10;pointer-events:none}
+.fc{flex:1;background:#0b1730eb;border:1px solid color-mix(in srgb,var(--c) 55%,transparent);border-radius:1.4vh;padding:.9vh 1vw;text-align:center;backdrop-filter:blur(6px)}
+.fc b{display:block;font-size:3.1vh;font-weight:900;color:var(--c);line-height:1.2}
+.fc span{font-size:1.85vh;opacity:.9;line-height:1.35;display:block}
+
+/* شريط ملاحظات الإلقاء وشريط التحكم */
+#nt{position:fixed;left:4.5vw;right:4.5vw;bottom:8vh;background:#04101ff5;border:1px solid var(--am);border-radius:1.5vh;padding:1.5vh 2vw;font-size:2.5vh;line-height:1.6;color:var(--am);z-index:25;display:none;box-shadow:0 10px 40px #000a}
+#nt.v{display:block}
+#nav{position:fixed;bottom:1.8vh;left:50%;transform:translateX(-50%);display:flex;gap:8px;z-index:30;opacity:.65;transition:.3s}#nav:hover{opacity:1}
+button{font:inherit;font-weight:700;font-size:1.85vh;color:var(--ink);background:#0d1a33dd;border:1px solid #2a3f6b;border-radius:10px;padding:.35em .95em;cursor:pointer}
+button:hover{border-color:var(--sky)}
+
+@media(max-width:900px){
+ .sc{grid-template-columns:1fr;grid-template-rows:auto 1fr;padding:6vh 5vw 12vh;overflow-y:auto}
+ .ttl{font-size:4.2vh}.pts li{font-size:2.2vh}.card{height:28vh}.gwrap,.yw,.stagew{width:28vh;height:28vh}.ph{width:14vh;height:27vh}.facts{display:none}
+}
+</style>
+</head>
+<body>
+<div class="bg"><svg id="tp" viewBox="0 0 1000 700"></svg></div>
+<div id="pg"></div>
+<div id="cnt">1 / 8</div>
+<div class="hud"><div id="la"></div><div id="lo"></div></div>
+
+<!-- الشريحة 1 -->
+<section class="sc s1">
+ <div class="wm">GIS</div>
+ <div class="txt">
+  <span class="tag rv">اليوم العالمي للـ GIS</span>
+  <h1 class="ttl rv">نظم المعلومات الجغرافية</h1>
+  <div class="sub rv">كل شيء يحدث في مكان ما، والـ GIS يجيب عن سؤال «أين؟»</div>
+  <ul class="pts">
+   <li class="rv" data-k="1">نظام يجمع <b>الخرائط والبيانات</b> ويحلّلها لنتخذ قرارات أفضل</li>
+   <li class="rv" data-k="1">يحوّل الخريطة من رسمة صامتة إلى <b>أداة تفهم المكان</b></li>
+   <li class="rv" data-k="2">في هذا العرض: ما هو، متى بدأ، وكيف يغيّر حياتنا اليومية</li>
+  </ul>
+ </div>
+ <div class="vis">
+  <div class="gwrap rv"><canvas id="gl"></canvas><div class="gwhere gr">أين؟</div></div>
+  <div class="cap rv" data-k="1">كل نقطة على الأرض مرتبطة ببياناتها</div>
+ </div>
+ <div class="facts rv" data-k="3">
+  <div class="fc"><b>1960s</b><span>أول GIS في العالم: كندا بقيادة روجر توملينسون</span></div>
+  <div class="fc"><b>1969</b><span>تأسيس Esri على يد جاك ولورا دانجرموند</span></div>
+  <div class="fc"><b>+30</b><span>قمراً صناعياً يعمل ضمن نظام GPS</span></div>
+ </div>
+</section>
+
+<!-- الشريحة 2 -->
+<section class="sc s2">
+ <div class="wm">؟</div>
+ <div class="txt">
+  <h1 class="ttl rv">ما هو الـ GIS؟</h1>
+  <div class="sub rv">يربط كل موقع على الأرض بمعلومات تصفه</div>
+  <ul class="pts">
+   <li class="rv" data-k="1">نوعان من البيانات: <b>متجهة</b> (نقطة، خط، مضلّع) و<b>شبكية</b> (صور الأقمار)</li>
+   <li class="rv" data-k="1">يجيب عن: <b>أين؟ كم؟ لماذا هنا؟ وماذا لو؟</b></li>
+   <li class="rv" data-k="2">بدأت فكرته في الستينيات في كندا بقيادة <b>روجر توملينسون</b></li>
+  </ul>
+ </div>
+ <div class="vis">
+  <div class="eq"><span class="rv">خريطة</span><span class="rv" data-k="1">+ بيانات</span><span class="rv" data-k="2">= فهم</span></div>
+  <div class="card rv"><svg viewBox="0 0 800 440" id="m2"><defs><radialGradient id="hg"><stop offset="0" stop-color="#10d9a0" stop-opacity=".75"/><stop offset="1" stop-color="#10d9a0" stop-opacity="0"/></radialGradient></defs></svg></div>
+ </div>
+ <div class="facts rv" data-k="3">
+  <div class="fc"><b>موقع + سمة</b><span>لكل عنصر إحداثيات وجدول بيانات يصفه</span></div>
+  <div class="fc"><b>نوعان</b><span>بيانات متجهة (Vector) وبيانات شبكية (Raster)</span></div>
+  <div class="fc"><b>3 أشكال</b><span>للمتجهات: نقطة، خط، مضلّع</span></div>
+ </div>
+</section>
+
+<!-- الشريحة 3 -->
+<section class="sc s3">
+ <div class="wm">1999</div>
+ <div class="txt">
+  <h1 class="ttl rv">اليوم العالمي للـ GIS</h1>
+  <div class="sub rv">احتفال عالمي يتجدد كل عام في شهر نوفمبر</div>
+  <ul class="pts">
+   <li class="rv" data-k="1">أول احتفال: <b>19 نوفمبر 1999</b> بمبادرة Esri وناشيونال جيوغرافيك وAAG</li>
+   <li class="rv" data-k="1">يُقام في <b>الأربعاء الثالث من نوفمبر</b> ضمن أسبوع الوعي الجغرافي</li>
+   <li class="rv" data-k="2">الهدف: نشر ثقافة التفكير المكاني وإظهار فوائده للمجتمع والمدارس</li>
+  </ul>
+ </div>
+ <div class="vis">
+  <div class="yw rv"><svg class="ring rv" id="rg" viewBox="0 0 100 100"></svg><div class="yr" id="yr">1999</div></div>
+  <div class="cap rv" data-k="1">أكثر من ربع قرن من نشر الوعي الجغرافي</div>
+ </div>
+ <div class="facts rv" data-k="2">
+  <div class="fc"><b>19 نوفمبر 1999</b><span>أول احتفال عالمي رسمي</span></div>
+  <div class="fc"><b>الأربعاء الثالث</b><span>من نوفمبر كل عام عالمياً</span></div>
+  <div class="fc"><b>نوفمبر 2026</b><span>احتفالنا الحالي باليوم العالمي</span></div>
+ </div>
+</section>
+
+<!-- الشريحة 4 -->
+<section class="sc s4" id="s4">
+ <div class="wm">LIVE</div>
+ <div class="txt">
+  <h1 class="ttl rv">خريطة صامتة أم حيّة؟</h1>
+  <div class="cards">
+   <div class="cd rv"><h3>الخريطة الصامتة</h3><p>صورة ثابتة تُرسم مرة واحدة، تتقادم بسرعة ولا تجيب عن أسئلتنا اللحظية.</p></div>
+   <div class="cd rv" data-k="1"><h3>الخريطة الحيّة</h3><p>بيانات لحظية من GPS وحساسات وهواتف، نتفاعل معها ونحلّلها بالثواني.</p></div>
+   <div class="cd rv" data-k="2"><h3>الفرق الجوهري</h3><p>الانتقال من سؤال «أين المكان؟» إلى «ماذا يحدث فيه الآن؟ وماذا سيحدث؟»</p></div>
+  </div>
+ </div>
+ <div class="vis">
+  <div class="card rv"><svg class="sil" id="sil" viewBox="0 0 800 440"></svg><svg class="lv" id="lv" viewBox="0 0 800 440"></svg><i class="sweep"></i>
+   <span class="bd rv" data-x="1">صامتة</span><span class="bd l rv" data-k="1">حيّة</span></div>
+  <div class="cap rv" data-k="1">مسح راداري يحوّل الرسم الصامت لحركة حيّة</div>
+ </div>
+ <div class="facts rv" data-k="3">
+  <div class="fc"><b>GPS</b><span>أقمار ومستقبلات تحدّد الموقع بدقة</span></div>
+  <div class="fc"><b>حساسات</b><span>كاميرات ومستشعرات تُرسل القراءة لحظياً</span></div>
+  <div class="fc"><b>سحابة</b><span>تحليل البيانات وتحديث الخريطة خلال ثوانٍ</span></div>
+ </div>
+</section>
+
+<!-- الشريحة 5 -->
+<section class="sc s5">
+ <div class="wm">3</div>
+ <div class="txt">
+  <h1 class="ttl rv">الطبقات الشفافة</h1>
+  <div class="sub rv">كل طبقة معلومة مستقلة، وتجتمع في صورة واحدة</div>
+  <div class="cards">
+   <div class="cd rv"><h3>1. التضاريس</h3><p>الارتفاعات والأنهار والغطاء النباتي وطبيعة الأرض.</p></div>
+   <div class="cd rv" data-k="1"><h3>2. الطرق</h3><p>شبكة الشوارع التي نحسب عليها المسارات وأقرب الطرق.</p></div>
+   <div class="cd rv" data-k="2"><h3>3. النقاط</h3><p>المدارس والمستشفيات والمحلات والحوادث فوق الخريطة.</p></div>
+  </div>
+ </div>
+ <div class="vis">
+  <div class="stg"><div class="lys"><div class="ly l1" data-k="0"></div><div class="ly l2" data-k="1"></div><div class="ly l3" data-k="2"></div></div></div>
+  <div class="lg-row"><span class="rv" style="color:var(--em)">● تضاريس</span><span class="rv" data-k="1" style="color:var(--sky)">● طرق</span><span class="rv" data-k="2" style="color:var(--am)">● نقاط</span></div>
+ </div>
+ <div class="facts rv" data-k="3">
+  <div class="fc"><b>Layer</b><span>طبقة واحدة = موضوع واحد (طرق، مباني، مياه…)</span></div>
+  <div class="fc"><b>Overlay</b><span>دمج الطبقات يكشف علاقات لا تظهر منفردة</span></div>
+  <div class="fc"><b>إحداثيات موحّدة</b><span>كل الطبقات تشترك في نظام إسناد واحد</span></div>
+ </div>
+</section>
+
+<!-- الشريحة 6 -->
+<section class="sc s6">
+ <div class="wm">1854</div>
+ <div class="txt">
+  <h1 class="ttl rv">جون سنو والكوليرا</h1>
+  <div class="sub rv">لندن 1854 — القصة التي أثبتت قوة الخريطة</div>
+  <ul class="pts">
+   <li class="rv" data-k="1">تفشّت الكوليرا في حي <b>سوهو</b> وتجاوزت الوفيات الموثّقة <b>600</b></li>
+   <li class="rv" data-k="1">رسم الطبيب جون سنو الإصابات على خريطة فتجمّعت حول <b>مضخة برود ستريت</b></li>
+   <li class="rv" data-k="2">في <b>8 سبتمبر</b> أُزيل مقبض المضخة وتراجع الوباء فوراً</li>
+  </ul>
+ </div>
+ <div class="vis">
+  <div class="card rv"><svg viewBox="0 0 800 440" id="m6"></svg><div class="cn rv" data-k="1">إصابات: <span id="cc">0</span></div></div>
+  <div class="cap rv" data-k="2">الخريطة كشفت المصدر: مضخة مياه واحدة</div>
+ </div>
+ <div class="facts rv" data-k="3">
+  <div class="fc"><b>1854</b><span>تفشي الكوليرا في حي سوهو بلندن</span></div>
+  <div class="fc"><b>+600</b><span>وفاة موثّقة خلال التفشي</span></div>
+  <div class="fc"><b>8 سبتمبر</b><span>إزالة مقبض مضخة برود ستريت</span></div>
+ </div>
+</section>
+
+<!-- الشريحة 7 -->
+<section class="sc s7">
+ <div class="wm">GPS</div>
+ <div class="txt">
+  <h1 class="ttl rv">الـ GIS في هاتفك</h1>
+  <div class="sub rv">تستخدمه كل يوم في جيبك دون أن تدري</div>
+  <ul class="pts">
+   <li class="rv" data-k="1"><b>خرائط وملاحة:</b> اختيار أقصر طريق وتجنّب الازدحام</li>
+   <li class="rv" data-k="1"><b>توصيل وإسعاف:</b> توجيه أقرب مندوب أو سيارة طوارئ</li>
+   <li class="rv" data-k="2"><b>الطقس والخدمات:</b> ربط بيانات الأقمار الصناعية بموقعك الحالي</li>
+  </ul>
+ </div>
+ <div class="vis">
+  <div class="stagew">
+   <div class="orb rv" data-k="1" id="ob"></div>
+   <div class="ph rv"><svg viewBox="0 0 170 340" preserveAspectRatio="xMidYMid slice"><path d="M0 100H170M0 230H170M55 0V340M120 0V340" stroke="#1d3563" stroke-width="9"/><path class="route" d="M30 310V230H120V100H55V40"/><circle cx="55" cy="40" r="10" fill="#ef4444"/><circle class="pl" cx="30" cy="310" r="9" fill="#38bdf8"/></svg></div>
+  </div>
+  <div class="cap rv" data-k="2">كلما سألت «أين؟» فأنت تستخدم GIS</div>
+ </div>
+ <div class="facts rv" data-k="3">
+  <div class="fc"><b>~5 م</b><span>دقة GPS الهاتف عادةً تحت سماء مفتوحة</span></div>
+  <div class="fc"><b>الأقصر</b><span>تحليل الشبكات يحسب أسرع مسار لحظياً</span></div>
+  <div class="fc"><b>طبقات</b><span>مرور وطقس ومواقع في خريطة واحدة</span></div>
+ </div>
+</section>
+
+<!-- الشريحة 8 -->
+<section class="sc s8">
+ <div class="wm">3D</div>
+ <div class="txt">
+  <h1 class="ttl rv">التوأم الرقمي والختام</h1>
+  <div class="sub rv">نجرّب في النسخة الحيّة قبل أن نبني على الواقع</div>
+  <ul class="pts">
+   <li class="rv" data-k="1"><b>التوأم الرقمي:</b> نسخة ثلاثية الأبعاد حيّة للمدينة تُغذّيها بيانات لحظية</li>
+   <li class="rv" data-k="1">نحاكي <b>الفيضانات والازدحام والطاقة</b> قبل التنفيذ الفعلي</li>
+   <li class="rv" data-k="2"><b>الخلاصة:</b> فهم المكان هو مفتاح القرار الأفضل — <span class="gr" style="font-weight:900">شكراً لكم 🌍</span></li>
+  </ul>
+ </div>
+ <div class="vis">
+  <div class="card rv"><svg viewBox="0 0 800 440" id="m8"></svg>
+   <span class="dt rv" data-k="1" style="right:4%;top:10%">🚦 مرور</span>
+   <span class="dt rv" data-k="1" style="left:6%;top:30%;--d:.2s">⚡ طاقة</span>
+   <span class="dt rv" data-k="1" style="right:30%;top:6%;--d:.4s">💧 مياه</span>
+  </div>
+  <div class="cap rv" data-k="2">GIS هو: أين، ولماذا، وماذا لو؟</div>
+ </div>
+ <div class="facts rv" data-k="3">
+  <div class="fc"><b>سنغافورة</b><span>نسخة ثلاثية الأبعاد حيّة لمدينة كاملة</span></div>
+  <div class="fc"><b>محاكاة</b><span>اختبار الفيضانات والازدحام قبل التنفيذ</span></div>
+  <div class="fc"><b>قرار</b><span>بيانات حيّة بدل التخمين</span></div>
+ </div>
+</section>
+
+<div id="nt"></div>
+<div id="nav">
+ <button id="pv">السابق</button>
+ <button id="nx">التالي</button>
+ <button id="rs">من البداية</button>
+ <button id="nb">ملاحظات</button>
+ <button id="fs">ملء الشاشة</button>
+</div>
+
+<script>
+(function(){
+var $=function(s){return document.querySelector(s)},sc=[].slice.call(document.querySelectorAll('.sc'));
+var NOTES=[
+ 'أهلاً بكم. سنتعرف اليوم على تقنية موجودة في هاتف كل واحد منا، وهي نظم المعلومات الجغرافية (GIS).',
+ 'الخريطة وحدها ترسم المكان، والبيانات وحدها أرقام. عندما نجمعهما نفهم الصورة كاملة.',
+ 'الفكرة بسيطة: يوم عالمي واحد منذ 1999 نُظهر فيه للناس ماذا تفعل هذه التقنية في مدنهم ومدارسهم.',
+ 'الخريطة الورقية تخبرك أين الشارع. الخريطة الحيّة تخبرك إن كان مزدحماً الآن وما أسرع طريق بديل.',
+ 'نضع الطبقات فوق بعضها فتظهر علاقات لا نراها منفردة، مثل مستشفى يقع بعيداً عن منطقة مزدحمة بالسكان.',
+ 'لم يكتفِ جون سنو بالأرقام. وضعها على خريطة فرأى ما لم يره أحد: مصدراً واحداً للوباء.',
+ 'في كل مرة تسأل هاتفك «أين؟» أو «أقرب؟» أو تطلب توصيلاً، فأنت تستخدم GIS في الخلفية.',
+ 'نختم بالمستقبل: مدن تُجرَّب رقمياً أولاً قبل البناء. شكراً لحسن استماعكم، ويسعدني أسئلتكم.'
+];
+var K=[3,3,2,3,3,3,3,3],plan=[];
+K.forEach(function(m,i){for(var k=0;k<=m;k++)plan.push([i,k])});
+function E(h,s){h.insertAdjacentHTML('beforeend',s)}
+
+var tp=$('#tp'),d='';
+for(var r=1;r<=16;r++){
+ var p='';
+ for(var a=0;a<=90;a++){
+  var t=a/90*6.2832,q=r*38+Math.sin(t*3+r*.6)*9+Math.sin(t*5+r*1.3)*6;
+  p+=(a?'L':'M')+(500+Math.cos(t)*q*1.5).toFixed(1)+' '+(350+Math.sin(t)*q).toFixed(1);
+ }
+ d+='<path d="'+p+'Z"/>';
+}
+tp.innerHTML=d;
+
+var BK='',x,y;
+for(x=0;x<4;x++)for(y=0;y<2;y++)BK+='<rect class="bk" x="'+(30+x*190)+'" y="'+(30+y*230)+'" width="150" height="150" rx="10"/>';
+var RD='<path class="rd" d="M0 205H800M0 395H800M190 0V440M380 0V440M570 0V440M760 0V440"/>';
+
+var m2=$('#m2'),P=[[110,110,'48'],[300,300,'72'],[470,120,'35'],[650,320,'90'],[250,160,'55'],[560,230,'64']];
+E(m2,'<g class="sil">'+BK+RD+'</g>');
+P.forEach(function(pt,k){
+ E(m2,'<circle class="heat rv" data-k="2" style="--d:'+k*.1+'s" cx="'+pt[0]+'" cy="'+pt[1]+'" r="80"/><g class="rv" data-k="1" style="--d:'+k*.15+'s"><circle class="pt" cx="'+pt[0]+'" cy="'+pt[1]+'" r="9"/><text class="pv" x="'+pt[0]+'" y="'+(pt[1]-18)+'">'+pt[2]+'</text></g>');
+});
+
+var rg=$('#rg'),s='';
+for(var k=0;k<28;k++){
+ var ang=k/28*6.2832-1.5708;
+ s+='<circle cx="'+(50+46*Math.cos(ang)).toFixed(1)+'" cy="'+(50+46*Math.sin(ang)).toFixed(1)+'" r="1.7" style="--dl:'+(.4+k*.07).toFixed(2)+'s"/>';
+}
+rg.innerHTML=s;
+
+$('#sil').innerHTML=BK+RD;
+$('#lv').innerHTML=BK+RD+'<circle class="car" cx="0" cy="205" r="8"/><circle class="car" cx="0" cy="205" r="8" style="animation-delay:-2.4s"/><circle class="car" cx="0" cy="395" r="8" style="animation-delay:-1s"/><circle class="car v" cx="380" cy="0" r="8" style="animation-delay:-3s"/><circle class="pl" cx="570" cy="205" r="14" fill="#ef4444"/><rect x="590" y="160" width="150" height="34" rx="12" fill="#10d9a0"/><text x="665" y="184" fill="#04101f" font-weight="700" font-size="20" text-anchor="middle" font-family="Cairo,sans-serif">حادث • 2 د</text>';
+
+var m6=$('#m6');
+E(m6,BK.replace(/class="bk"/g,'class="bk" opacity=".7"')+'<path class="rd" style="stroke:#1d3563" d="M0 205H800M0 395H800M190 0V440M380 0V440M570 0V440M760 0V440"/><g class="rv" data-k="0"><circle cx="400" cy="205" r="11" fill="#38bdf8" stroke="#fff" stroke-width="2"/></g>');
+var cs='';
+for(k=0;k<40;k++){
+ var an=k*2.4,rr=14+Math.pow(k%14,1.45)*5;
+ cs+='<circle class="cs" style="--dl:'+(.2+k*.06).toFixed(2)+'s" cx="'+(400+Math.cos(an)*rr*1.3).toFixed(0)+'" cy="'+(205+Math.sin(an)*rr*.8).toFixed(0)+'" r="6"/>';
+}
+E(m6,'<g class="rv" data-k="1">'+cs+'</g><g class="rv" data-k="2"><circle class="dr" pathLength="1" cx="400" cy="205" r="110" fill="none" stroke="#fbbf24" stroke-width="3"/><text x="400" y="345" fill="#fbbf24" font-weight="900" font-size="26" text-anchor="middle" font-family="Cairo,sans-serif">المصدر: المضخة</text></g>');
+
+var ic=['🧭 خرائط','🛵 توصيل','⛅ طقس','🚑 إسعاف','🛒 تسوّق','📸 صور'];
+$('#ob').innerHTML=ic.map(function(t,i){return '<i style="--a:'+i*60+'deg"><b>'+t+'</b></i>'}).join('');
+
+var H=[90,150,110,200,130,170,80,140,190,100,160,120],m8=$('#m8'),cy='<path d="M0 400H800" stroke="#2a3f6b" stroke-width="3"/>';
+H.forEach(function(h,i){cy+='<rect class="tw" style="--dl:'+(.2+i*.08).toFixed(2)+'s" x="'+(30+i*63)+'" y="'+(400-h*1.4)+'" width="46" height="'+h*1.4+'" rx="4"/>'});
+E(m8,'<g class="rv">'+cy+'</g><g class="rv" data-k="1"><rect class="scan" x="400" y="40" width="4" height="360"/></g>');
+
+var MB=atob('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD8AAAAAAAAAAAAAAAAAAAAAAAAAP7///gAAAAAAAAAAAAAAAAAAAAAAAH/f///wAAAAAAAAAAAAAAAAAAAAAAAHgP///4AAAAAAAAAAAAAAAAAAAAAAAAAAf//4AAAAAAAAf/AAAAAAAAAAAAAAAAf//wAAAAAAAD///8AAAAABgAAf5x+AP//gAAAAAAD//////4AAAP//+P///wP/+AAAf4AAD////////4Af//////f+H/gAAA/4P///////////Af/////+H8D8A+AB87////////////Af/////4A4B4AAAH7////////////8AP/////wHgAYAAAP5n///////////wADwH///gH8AAAAAP4/////////+AYAACAB///wP+AAAAGCz/////////8A4AAAAA///+P/AAAAHCD/////////4A4AAAAAf///v/gAAAbn//////////5AgAAAAAP/////gAAAH///////////9AAAAAAAH/////AAAAD///////////9AAAAAAAD////4AAAAB///////////4AAAAAAAD////8AAAAB/fwOP//////wAAAAAAAD////gAAAAfxnwGP//////jAAAAAAAD////AAAAAfgb//H/////+CAAAAAAAD///+AAAAAfADf/H////+ECAAAAAAAB///8AAAAAeGAP/n/////kMAAAAAAAB///8AAAAAH+AA//////+E4AAAAAAAAf//4AAAAAf/AB///////BAAAAAAAAAP//gAAAAAf/9////////gAAAAAAAAAD/gwAAAAA///9/f/////gAAAAAAAAAB/AQAAAAB///8/j/////AAAAAAAAAAA+AAAAAAD///+/kf///+AAAAAAAAAAAeAAAAAAD////f+D///8AAAAAAAAAAAfEMAAAAH////P+B/j/AAAAAAAAAAAAPEBgAAAD////v8AfB+AAAAAAAAAAAAD8AAAAAD////34AeB/AgAAAAAAAAAAAfAAAAAH////3gAcAfAgAAAAAAAAAAADAAAAAD////4AAcAfAAAAAAAAAAAAABBwAAAD////9gAMAXAAAAAAAAAAAAAAz/AAAB/////gAIAQAAAAAAAAAAAAAAH/wAAA/////AACAYAYAAAAAAAAAAAAH/8AAAOH///AAAAIGAAAAAAAAAAAAAH/8AAAAB//+AAAA8OAAAAAAAAAAAAAP/+AAAAB//8AAAAYewAAAAAAAAAAAAP//AAAAD//4AAAAMehgAAAAAAAAAAAP//4AAAB//wAAAAEcg+AAAAAAAAAAAf///AAAA//wAAAACAAHgAAAAAAAAAAP///AAAA//gAAAABgAHwAAAAAAAAAAH///AAAA//wAAAAAAAD4AAAAAAAAAAH///AAAAf/wAAAAAAABAAAAAAAAAAAD//+AAAAf/wgAAAAABxAAAAAAAAAAAD//8AAAA//xgAAAAAPxgAAAAAAAAAAA//8AAAA//jgAAAAAf/gAAAAAAAAAAAf/8AAAA//DgAAAAAf/gAAAAAAAAAAAf/8AAAAf/DAAAAAD//wAAAAAAAAAAAf/wAAAAf+DAAAAAH//4AAAAAAAAAAAf/gAAAAf+DAAAAAH//8AAAAAAAAAAA//AAAAAP8AAAAAAH//8AAAAAAAAAAA//AAAAAP8AAAAAAH//8AAAAAAAAAAA/+AAAAAH4AAAAAAH//8AAAAAAAAAAA/8AAAAAHwAAAAAAH4f8AAAAAAAAAAA/4AAAAAAAAAAAAAAAH8AIAAAAAAAAB/gAAAAAAAAAAAAAAAD4AEAAAAAAAAB+AAAAAAAAAAAAAAAAAAAGAAAAAAAAB4AAAAAAAAAAAAAAAAAwAIAAAAAAAAB4AAAAAAAAAAAAAAAAAQAQAAAAAAAAB4AAAAAAAAAAAAAAAAAAAgAAAAAAAADwAAAAAAAAAAAAAAAAAAAAAAAAAAAABwAAAAAAAAAAAAAAAAAAAAAAAAAAAABgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+function isL(la,lo){
+ var a=Math.min(179,Math.max(0,Math.floor((lo+180)/2))),b=Math.min(89,Math.max(0,Math.floor((90-la)/2))),i=b*180+a;
+ return(MB.charCodeAt(i>>3)>>(7-(i&7)))&1;
+}
+var cv=$('#gl'),g=cv.getContext('2d'),S,DG=Math.PI/180,G=[];
+function fit(){S=cv.width=cv.height=Math.round(Math.min(innerWidth,innerHeight)*.5)}
+fit();addEventListener('resize',fit);
+for(var la=-80;la<=84;la+=2){
+ var n=Math.max(1,Math.round(180*Math.cos(la*DG)));
+ for(var i=0;i<n;i++){var lo=-180+(i+.5)*360/n;G.push([la*DG,lo*DG,isL(la,lo)])}
+}
+var CT=[[24.7,46.7],[30,31.2],[51.5,-.1],[40.7,-74],[35.7,139.7],[-33.9,151.2],[-22.9,-43.2],[-1.3,36.8]];
+function gd(t){
+ requestAnimationFrame(gd);
+ if(!sc[0].classList.contains('on'))return;
+ var C=S/2,R=S*.42,rot=-.5+t*.00015,cr=Math.cos(rot),sr=Math.sin(rot),ct=Math.cos(.42),st=Math.sin(.42);
+ g.clearRect(0,0,S,S);
+ var gr=g.createRadialGradient(C,C,R*.9,C,C,R*1.18);
+ gr.addColorStop(0,'rgba(56,189,248,0)');gr.addColorStop(.35,'rgba(56,189,248,.45)');gr.addColorStop(1,'rgba(56,189,248,0)');
+ g.fillStyle=gr;g.beginPath();g.arc(C,C,R*1.18,0,6.3);g.fill();
+ gr=g.createRadialGradient(C*.8,C*.75,R*.1,C,C,R);
+ gr.addColorStop(0,'#0e3a63');gr.addColorStop(1,'#030d1c');
+ g.fillStyle=gr;g.beginPath();g.arc(C,C,R,0,6.3);g.fill();
+ function pr(la,lo){
+  var sl=Math.sin(lo)*cr+Math.cos(lo)*sr,cl=Math.cos(lo)*cr-Math.sin(lo)*sr,x=Math.cos(la)*sl,z0=Math.cos(la)*cl;
+  return[x,Math.sin(la)*ct-z0*st,Math.sin(la)*st+z0*ct];
+ }
+ var L=[],W=[];
+ G.forEach(function(q){var p=pr(q[0],q[1]);if(p[2]<.03)return;(q[2]?L:W).push(C+R*p[0],C-R*p[1])});
+ g.fillStyle='rgba(56,189,248,.18)';g.beginPath();for(var i=0;i<W.length;i+=2)g.rect(W[i],W[i+1],2,2);g.fill();
+ g.fillStyle='rgba(16,217,160,.88)';g.beginPath();for(i=0;i<L.length;i+=2)g.rect(L[i],L[i+1],2.8,2.8);g.fill();
+ CT.forEach(function(c,j){
+  var p=pr(c[0]*DG,c[1]*DG);if(p[2]<.05)return;
+  var ph=(t/1700+j*.19)%1,x=C+R*p[0],y=C-R*p[1];
+  g.fillStyle='#fbbf24';g.beginPath();g.arc(x,y,R*.015,0,6.3);g.fill();
+  g.strokeStyle='rgba(251,191,36,'+(.8*(1-ph))+')';g.lineWidth=2;g.beginPath();g.arc(x,y,R*(.016+.06*ph),0,6.3);g.stroke();
+ });
+}
+requestAnimationFrame(gd);
+
+var TG=[[32.63,14.00],[30.04,31.24],[38.90,-77.04],[48.86,2.35],[35.68,139.69],[51.5134,-.1365],[37.77,-122.4],[25.20,55.27]],cur=[0,0],raf=0;
+function fm(v,a,b){return Math.abs(v).toFixed(4)+'° '+(v>=0?a:b)}
+function fly(i){
+ var f=cur.slice(),t=TG[i],t0=performance.now();cancelAnimationFrame(raf);
+ (function st(n){
+  var u=Math.min(1,(n-t0)/1200),e=1-Math.pow(1-u,4);
+  cur=[f[0]+(t[0]-f[0])*e,f[1]+(t[1]-f[1])*e];
+  $('#la').textContent=fm(cur[0],'N','S');$('#lo').textContent=fm(cur[1],'E','W');
+  if(u<1)raf=requestAnimationFrame(st);
+ })(t0);
+}
+
+function cnt(el,a,b,ms){
+ var t0=performance.now();
+ (function f(n){
+  var u=Math.min(1,(n-t0)/ms);
+  el.textContent=Math.round(a+(b-a)*(1-Math.pow(1-u,3)));
+  if(u<1)requestAnimationFrame(f);
+ })(t0);
+}
+
+var p=0,lastI=-1,lastK=-1;
+function show(){
+ var i=plan[p][0],k=plan[p][1];
+ sc.forEach(function(s,j){
+  s.classList.toggle('on',j===i);
+  s.classList.toggle('past',j<i);
+  s.dataset.step=j===i?k:0;
+  s.querySelectorAll('.rv,[data-k]').forEach(function(e){
+   var a=+(e.dataset.k||0),x=+(e.dataset.x||99);
+   e.classList.toggle('in',j===i&&k>=a&&k<x);
+  });
+  s.classList.toggle('fx',!!s.querySelector('.facts.in'));
+  if(j!==i)setTimeout(function(){if(!s.classList.contains('on'))s.querySelectorAll('.in').forEach(function(e){e.classList.remove('in')})},950);
+ });
+ $('#pg').style.transform='scaleX('+(p+1)/plan.length+')';
+ $('#cnt').textContent=(i+1)+' / 8';
+ $('#nt').textContent=NOTES[i];
+ if(i!==lastI){
+  fly(i);
+  if(i===2)cnt($('#yr'),1900,1999,1600);
+  if(i===5)$('#cc').textContent=0;
+ }
+ if(i===5&&k>=1&&!(lastI===5&&lastK>=1))setTimeout(function(){cnt($('#cc'),0,40,2400)},300);
+ lastI=i;lastK=k;
+}
+
+function nx(){if(p<plan.length-1){p++;show()}}
+function pv(){if(p>0){p--;show()}}
+function nt(){$('#nt').classList.toggle('v')}
+function fs(){try{document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen()}catch(x){}}
+
+$('#nx').onclick=nx;$('#pv').onclick=pv;$('#rs').onclick=function(){p=0;show()};$('#nb').onclick=nt;$('#fs').onclick=fs;
+addEventListener('click',function(e){if(!e.target.closest('#nav'))nx()});
+addEventListener('contextmenu',function(e){e.preventDefault();pv()});
+addEventListener('keydown',function(e){
+ var k=e.key;
+ if(k==='ArrowLeft'||k===' '||k==='PageDown'||k==='Enter'){e.preventDefault();nx()}
+ else if(k==='ArrowRight'||k==='PageUp'||k==='Backspace'){e.preventDefault();pv()}
+ else if(k==='Home'){p=0;show()}
+ else if(k==='End'){p=plan.length-1;show()}
+ else if(k==='f'||k==='F')fs();
+ else if(k==='n'||k==='N')nt();
+});
+addEventListener('mousemove',function(e){
+ document.body.style.setProperty('--mx',(e.clientX/innerWidth*2-1).toFixed(3));
+ document.body.style.setProperty('--my',(e.clientY/innerHeight*2-1).toFixed(3));
+});
+setTimeout(show,150);
+})();
+</script>
+</body>
+</html>
